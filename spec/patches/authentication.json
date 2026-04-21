@@ -1,0 +1,336 @@
+{
+  "components": {
+    "schemas": {
+      "AuthCodeResponse": {
+        "properties": {
+          "errorCode": {
+            "description": "0 indicates success",
+            "type": "integer"
+          },
+          "msg": {
+            "type": "string"
+          },
+          "result": {
+            "description": "The authorization code",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "LoginRequest": {
+        "properties": {
+          "password": {
+            "description": "Omada account password",
+            "type": "string"
+          },
+          "username": {
+            "description": "Omada account username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "type": "object"
+      },
+      "LoginResponse": {
+        "properties": {
+          "errorCode": {
+            "description": "0 indicates success",
+            "type": "integer"
+          },
+          "msg": {
+            "type": "string"
+          },
+          "result": {
+            "$ref": "#/components/schemas/LoginResult"
+          }
+        },
+        "type": "object"
+      },
+      "LoginResult": {
+        "properties": {
+          "csrfToken": {
+            "description": "CSRF token for subsequent requests",
+            "type": "string"
+          },
+          "sessionId": {
+            "description": "Session ID to use as TPOMADA_SESSIONID cookie",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "TokenRequest": {
+        "properties": {
+          "client_id": {
+            "description": "OAuth client ID",
+            "type": "string"
+          },
+          "client_secret": {
+            "description": "OAuth client secret",
+            "type": "string"
+          },
+          "omadacId": {
+            "description": "Omada Controller ID (required for client_credentials grant)",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_id",
+          "client_secret"
+        ],
+        "type": "object"
+      },
+      "TokenResponse": {
+        "properties": {
+          "errorCode": {
+            "description": "0 indicates success",
+            "type": "integer"
+          },
+          "msg": {
+            "type": "string"
+          },
+          "result": {
+            "$ref": "#/components/schemas/TokenResult"
+          }
+        },
+        "type": "object"
+      },
+      "TokenResult": {
+        "properties": {
+          "accessToken": {
+            "description": "Access token. Use in Authorization header as: AccessToken=<token>",
+            "type": "string"
+          },
+          "expiresIn": {
+            "description": "Token validity in seconds (7200 = 2 hours)",
+            "type": "integer"
+          },
+          "refreshToken": {
+            "description": "Single-use refresh token valid for 14 days",
+            "type": "string"
+          },
+          "tokenType": {
+            "description": "Token type (e.g. Bearer)",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Authentication endpoints for the TP-Link Omada Open API. These endpoints are not included in the main OpenAPI spec.\n",
+    "title": "Omada Open API - Authorization",
+    "version": "v0.1"
+  },
+  "openapi": "3.0.1",
+  "paths": {
+    "/openapi/authorize/code": {
+      "post": {
+        "description": "Exchange CSRF token and session for an authorization code. Requires the Csrf-Token header and TPOMADA_SESSIONID cookie from the login response.\n",
+        "operationId": "authorizeCode",
+        "parameters": [
+          {
+            "description": "OAuth client ID",
+            "in": "query",
+            "name": "client_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Omada Controller ID",
+            "in": "query",
+            "name": "omadac_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Must be \"code\"",
+            "in": "query",
+            "name": "response_type",
+            "required": true,
+            "schema": {
+              "enum": [
+                "code"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSRF token from login response",
+            "in": "header",
+            "name": "Csrf-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Session cookie, format: TPOMADA_SESSIONID=<sessionId>",
+            "in": "header",
+            "name": "Cookie",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthCodeResponse"
+                }
+              }
+            },
+            "description": "Authorization code"
+          }
+        },
+        "summary": "Get authorization code (step 2)",
+        "tags": [
+          "Authorize"
+        ]
+      }
+    },
+    "/openapi/authorize/login": {
+      "post": {
+        "description": "Authenticate with username and password. Returns a CSRF token and session ID needed to obtain an authorization code.\n",
+        "operationId": "authorizeLogin",
+        "parameters": [
+          {
+            "description": "OAuth client ID",
+            "in": "query",
+            "name": "client_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Omada Controller ID",
+            "in": "query",
+            "name": "omadac_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            },
+            "description": "Successful login"
+          }
+        },
+        "summary": "Login (Authorization Code flow step 1)",
+        "tags": [
+          "Authorize"
+        ]
+      }
+    },
+    "/openapi/authorize/token": {
+      "post": {
+        "description": "Obtain an access token via authorization code, client credentials, or refresh token grant. The access token is valid for 2 hours. The refresh token is valid for 14 days and is single-use.\n",
+        "operationId": "authorizeToken",
+        "parameters": [
+          {
+            "description": "OAuth grant type",
+            "in": "query",
+            "name": "grant_type",
+            "required": true,
+            "schema": {
+              "enum": [
+                "authorization_code",
+                "client_credentials",
+                "refresh_token"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Authorization code (required for authorization_code grant)",
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Refresh token (required for refresh_token grant)",
+            "in": "query",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            },
+            "description": "Token response"
+          }
+        },
+        "summary": "Get or refresh access token",
+        "tags": [
+          "Authorize"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "description": "US region",
+      "url": "https://use1-omada-northbound.tplinkcloud.com"
+    },
+    {
+      "description": "EU region",
+      "url": "https://euw1-omada-northbound.tplinkcloud.com"
+    },
+    {
+      "description": "Singapore region",
+      "url": "https://aps1-omada-northbound.tplinkcloud.com"
+    }
+  ]
+}
