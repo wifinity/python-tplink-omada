@@ -8,7 +8,7 @@ This repository maintains ADR decisions in a single evolving file (`docs/adr.md`
 
 ---
 
-## Decision A (2026-04): Hand-written client with patched OpenAPI and internal generated models
+## Decision 1 (2026-04): Hand-written client with patched OpenAPI and internal generated models
 
 ### Context
 The Omada published OpenAPI spec has known quality gaps (missing path parameters, inconsistent content types, and unstable operation IDs), which makes full end-to-end client generation brittle for a stable public SDK.
@@ -33,7 +33,7 @@ Use a hand-written resource-oriented client API with:
 
 ---
 
-## Decision B (2026-04): Align local spec patches with upstream `omada-go-sdk` conventions
+## Decision 2 (2026-04): Align local spec patches with upstream `omada-go-sdk` conventions
 
 ### Context
 Local patch overlays had drifted from upstream patch naming/content patterns, increasing maintenance surface and reducing cross-project consistency.
@@ -54,7 +54,7 @@ Local patch overlays had drifted from upstream patch naming/content patterns, in
 
 ---
 
-## Decision C (2026-04): Local-controller-only API contract
+## Decision 3 (2026-04): Local-controller-only API contract
 
 ### Context
 The validated and supported contract for this SDK is local Omada controller operation. Carrying `deployment` and `region` concepts in the public API added complexity without matching the intended usage model.
@@ -75,3 +75,55 @@ The validated and supported contract for this SDK is local Omada controller oper
 - Clearer and smaller public API contract.
 - Breaking change for callers relying on deployment/region abstractions.
 - More deterministic URL construction and authentication behavior.
+
+---
+
+## Decision 4 (2026-04): Site creation defaults and explicit device credentials
+
+### Context
+Omada site creation requires `region`, `scenario`, `timeZone`, and `deviceAccountSetting`.
+The previous `SitesResource.create()` surface did not align with this requirement and used `tz` instead of `timeZone`, leading to avoidable runtime validation failures.
+
+### Decision
+- Update `SitesResource.create()` to expose explicit, ergonomic parameters:
+  - `region` (default: `United Kingdom`)
+  - `scenario` (default: `Dormitory`)
+  - `time_zone` (default: `UTC`, mapped to request field `timeZone`)
+  - `device_username` and `device_password`
+- Require `device_username` and `device_password` to be provided together unless callers pass raw `deviceAccountSetting` via `**kwargs`.
+- Validate `region` as a full country name using `pycountry`:
+  - accept full names case-insensitively
+  - reject ISO code inputs like `GB`/`GBR` with actionable error messages
+- Preserve advanced overrides through `**kwargs`, with explicit parameters taking precedence.
+
+### Consequences
+- Site creation works with a smaller and safer call surface for the primary use case.
+- Payloads now conform to Omada field names and required attributes by default.
+- Consumers get earlier, clearer validation errors for region and credentials.
+- New dependency on `pycountry` is required for client-side region validation.
+
+---
+
+## Decision 5 (2026-04): Canonical site read contract for `all()` and `get(...)`
+
+### Context
+Site lookup support was added with `client.sites.all()` and `client.sites.get(...)` (`id` or `name`).
+Omada's site list endpoint requires paging parameters and returns summary objects, while the site detail endpoint returns the canonical full entity.
+Returning list summaries from `get(name=...)` created shape differences versus `get(id=...)`.
+
+### Decision
+- Implement `client.sites.all(params=...)` as a single-page list call to `GET /openapi/v1/{omadacId}/sites`.
+- Apply default paging params in `all()`:
+  - `page=1`
+  - `pageSize=1000`
+  while allowing caller overrides via `params`.
+- Implement `client.sites.get(id=...)` as `GET /openapi/v1/{omadacId}/sites/{siteId}` and return the detail entity payload.
+- Implement `client.sites.get(name=...)` as:
+  1. list query (`searchKey=name`) to resolve `siteId`
+  2. canonical detail fetch by `siteId`
+- Require exactly one selector for `get(...)` (`id` xor `name`) and raise `ValueError` for invalid or ambiguous matches.
+
+### Consequences
+- `get(id=...)` and `get(name=...)` now return the same canonical payload shape.
+- `all()` supports paging controls but intentionally remains a one-page call (no auto-pagination loop).
+- Name-based lookup incurs one additional API request in exchange for consistent detail output.
