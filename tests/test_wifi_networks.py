@@ -16,8 +16,8 @@ def test_wifi_create_and_assign() -> None:
     client = DummyClient()
     resource = WiFiNetworksResource(client)
 
-    resource.create("s1", {"name": "Corp"})
-    resource.assign_to_ap_group("s1", "w1", "g1")
+    resource.create(site_id="s1", network_data={"name": "Corp"})
+    resource.assign_to_ap_group(site_id="s1", wlan_id="w1", ap_group_id="g1")
 
     assert client.calls[0] == ("/openapi/v1/sites/s1/wlans", {"name": "Corp"})
     assert client.calls[1] == (
@@ -35,8 +35,8 @@ def test_wifi_create_and_assign_use_api_path_rewrite() -> None:
     client = OmadacPathDummyClient()
     resource = WiFiNetworksResource(client)
 
-    resource.create("s1", {"name": "Corp"})
-    resource.assign_to_ap_group("s1", "w1", "g1")
+    resource.create(site_id="s1", network_data={"name": "Corp"})
+    resource.assign_to_ap_group(site_id="s1", wlan_id="w1", ap_group_id="g1")
 
     assert client.calls[0] == ("/openapi/v1/omadac-1/sites/s1/wlans", {"name": "Corp"})
     assert client.calls[1] == (

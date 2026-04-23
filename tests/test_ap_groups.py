@@ -16,7 +16,7 @@ def test_create_ap_group() -> None:
     client = DummyClient()
     resource = APGroupsResource(client)
 
-    result = resource.create("s1", {"name": "APGroupA"})
+    result = resource.create(site_id="s1", group_data={"name": "APGroupA"})
 
     assert result == {"ok": True}
     assert client.last == ("/openapi/v1/sites/s1/ap-groups", {"name": "APGroupA"})
@@ -31,6 +31,6 @@ def test_create_ap_group_uses_api_path_rewrite() -> None:
     client = OmadacPathDummyClient()
     resource = APGroupsResource(client)
 
-    resource.create("s1", {"name": "APGroupA"})
+    resource.create(site_id="s1", group_data={"name": "APGroupA"})
 
     assert client.last == ("/openapi/v1/omadac-1/sites/s1/ap-groups", {"name": "APGroupA"})

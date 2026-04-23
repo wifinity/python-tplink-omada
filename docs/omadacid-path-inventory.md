@@ -13,9 +13,21 @@ Source: `spec/fixed/all-fixed.json`
   - SDK path template: `/openapi/v1/sites`
   - Canonical local-controller path: `/openapi/v1/{omadacId}/sites`
   - Fixed spec match: exact
-- `DevicesResource.register` and `DevicesResource.remove`
+- `DevicesResource.list`, `DevicesResource.create`/`DevicesResource.register`, `DevicesResource.remove`
   - SDK path template: `/openapi/v1/sites/{siteId}/devices`
   - Canonical local-controller path: `/openapi/v1/{omadacId}/sites/{siteId}/devices`
+  - Fixed spec match: exact
+- `DevicesResource.get_by_mac` (AP-specific)
+  - SDK path template: `/openapi/v1/sites/{siteId}/aps/{apMac}`
+  - Canonical local-controller path: `/openapi/v1/{omadacId}/sites/{siteId}/aps/{apMac}`
+  - Fixed spec match: exact
+- `DevicesResource.delete` (forget by MAC)
+  - SDK path template: `/openapi/v1/sites/{siteId}/devices/{deviceMac}/forget`
+  - Canonical local-controller path: `/openapi/v1/{omadacId}/sites/{siteId}/devices/{deviceMac}/forget`
+  - Fixed spec match: exact
+- `DevicesResource.add_by_device_key`
+  - SDK path template: `/openapi/v1/sites/{siteId}/multi-devices/devicekey-add`
+  - Canonical local-controller path: `/openapi/v1/{omadacId}/sites/{siteId}/multi-devices/devicekey-add`
   - Fixed spec match: exact
 - `DevicesResource.send_config`
   - SDK path template: `/openapi/v1/sites/{siteId}/devices/{deviceId}/config`
@@ -37,6 +49,15 @@ Source: `spec/fixed/all-fixed.json`
   - SDK path template: `/openapi/v1/sites/{siteId}/ap-groups`
   - Canonical local-controller path: `/openapi/v1/{omadacId}/sites/{siteId}/ap-groups`
   - Fixed spec match: no exact route in current fixed spec
+
+## Typed facade reuse pattern
+
+- `APsResource` maps AP workflows onto canonical `DevicesResource` actions:
+  - `APsResource.list` -> `DevicesResource.list` with AP-specific query options
+  - `APsResource.get_by_mac` -> `DevicesResource.get_by_mac(..., device_type="ap")`
+  - `APsResource.create` -> `DevicesResource.add_by_device_key`
+  - `APsResource.delete` -> `DevicesResource.delete`
+- This pattern is the expected extension model for future device-type resources (for example switches).
 
 ## Contract conclusion
 

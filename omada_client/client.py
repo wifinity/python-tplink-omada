@@ -17,7 +17,7 @@ from .exceptions import (
     OmadaValidationError,
 )
 from .logging_config import format_body, get_logger, mask_sensitive_headers, set_log_level
-from .resources import APGroupsResource, DevicesResource, SitesResource, WiFiNetworksResource
+from .resources import APGroupsResource, APsResource, DevicesResource, SitesResource, WiFiNetworksResource
 
 
 class OmadaClient:
@@ -60,6 +60,7 @@ class OmadaClient:
 
         self.sites = SitesResource(self)
         self.devices = DevicesResource(self)
+        self.aps = APsResource(self)
         self.wifi_networks = WiFiNetworksResource(self)
         self.ap_groups = APGroupsResource(self)
 

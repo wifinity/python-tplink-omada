@@ -65,39 +65,29 @@ class SitesResource:
 
         return []
 
-    def _site_list_params(
-        self, params: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    def _site_list_params(self, params: dict[str, Any] | None = None) -> dict[str, Any]:
         final_params: dict[str, Any] = {"page": 1, "pageSize": 1000}
         if params:
             final_params.update(params)
         return final_params
 
     def all(self, *, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-        response = self.client.get(
-            self._path("/openapi/v1/sites"), params=self._site_list_params(params)
-        )
+        response = self.client.get(self._path("/openapi/v1/sites"), params=self._site_list_params(params))
         return self._coerce_list_response(cast(dict[str, Any], response))
 
-    def get(
-        self, *, id: str | None = None, name: str | None = None
-    ) -> dict[str, Any]:
+    def get(self, *, id: str | None = None, name: str | None = None) -> dict[str, Any]:
         if (id is None) == (name is None):
             raise ValueError("Provide exactly one of 'id' or 'name'")
 
         if id is not None:
-            response = cast(
-                dict[str, Any], self.client.get(self._path(f"/openapi/v1/sites/{id}"))
-            )
+            response = cast(dict[str, Any], self.client.get(self._path(f"/openapi/v1/sites/{id}")))
             result = response.get("result")
             if isinstance(result, dict):
                 return result
             return response
 
         sites = self.all(params={"searchKey": name})
-        exact_matches = [
-            site for site in sites if isinstance(site.get("name"), str) and site["name"] == name
-        ]
+        exact_matches = [site for site in sites if isinstance(site.get("name"), str) and site["name"] == name]
         if not exact_matches:
             raise ValueError(f"Site with name '{name}' was not found")
         if len(exact_matches) > 1:
@@ -109,6 +99,7 @@ class SitesResource:
 
     def create(
         self,
+        *,
         name: str,
         region: str = "United Kingdom",
         scenario: str = "Dormitory",
@@ -125,9 +116,7 @@ class SitesResource:
         payload["timeZone"] = time_zone
 
         if (device_username is None) ^ (device_password is None):
-            raise ValueError(
-                "device_username and device_password must be provided together"
-            )
+            raise ValueError("device_username and device_password must be provided together")
 
         if device_username is not None and device_password is not None:
             payload["deviceAccountSetting"] = {

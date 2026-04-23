@@ -92,3 +92,14 @@ def test_api_path_includes_omadac_id_for_openapi_v1_paths() -> None:
     assert client.api_path("/openapi/v1/sites") == "/openapi/v1/omadac-1/sites"
     assert client.api_path("/openapi/v1/omadac-1/sites") == "/openapi/v1/omadac-1/sites"
     assert client.api_path("/openapi/authorize/token") == "/openapi/authorize/token"
+
+
+def test_client_exposes_aps_resource() -> None:
+    client = OmadaClient(
+        base_url="https://controller.example",
+        omadac_id="omadac-1",
+        client_id="id",
+        client_secret="secret",
+    )
+
+    assert client.aps is not None
