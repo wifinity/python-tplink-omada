@@ -67,6 +67,8 @@ class DummyClient:
 
     def get(self, path: str, params=None):
         self.calls.append(("GET", path, params))
+        if path.endswith("/wired-uplink"):
+            return {"result": {"wiredUplink": {"portType": 0, "linkStatus": 1, "linkSpeed": 3, "duplex": 2}}}
         return {"result": {"mac": "AA-BB-CC-DD-EE-FF", "name": "AP-Overview"}}
 
     def patch(self, path: str, json=None):
@@ -85,6 +87,7 @@ def test_aps_resource_delegates_to_devices_with_ap_options() -> None:
     by_mac = resource.get_by_mac(site_id="s1", mac="aa:bb:cc:dd:ee:ff")
     by_name = resource.get_by_name(site_id="s1", name="AP-1")
     overview = resource.get_overview_by_mac(site_id="s1", mac="aa:bb:cc:dd:ee:ff")
+    wired_uplink = resource.get_wired_uplink_by_mac(site_id="s1", mac="aa:bb:cc:dd:ee:ff")
     created = resource.create(site_id="s1", device_key="ZTP-DEVICE-KEY")
     started_adopt = resource.start_adopt(
         site_id="s1",
@@ -118,6 +121,20 @@ def test_aps_resource_delegates_to_devices_with_ap_options() -> None:
         "detailStatusMeaning": "Connected",
     }
     assert overview == {"result": {"mac": "AA-BB-CC-DD-EE-FF", "name": "AP-Overview"}}
+    assert wired_uplink == {
+        "result": {
+            "wiredUplink": {
+                "portType": 0,
+                "portTypeMeaning": "ETH",
+                "linkStatus": 1,
+                "linkStatusMeaning": "Up",
+                "linkSpeed": 3,
+                "linkSpeedMeaning": "1000M",
+                "duplex": 2,
+                "duplexMeaning": "Full",
+            }
+        }
+    }
     assert created == {"ok": True}
     assert started_adopt == {"started": True}
     assert checked_adopt == {"result": {"adoptErrorCode": 0, "adoptErrorMeaning": "Adopt Device Success"}}
@@ -132,6 +149,11 @@ def test_aps_resource_delegates_to_devices_with_ap_options() -> None:
     assert client.devices.calls[6] == ("delete", "s1", "AA-BB-CC-DD-EE-FF")
     assert client.calls[0] == ("GET", "/openapi/v1/omadac-1/sites/s1/aps/AA-BB-CC-DD-EE-FF", None)
     assert client.calls[1] == (
+        "GET",
+        "/openapi/v1/omadac-1/sites/s1/aps/AA-BB-CC-DD-EE-FF/wired-uplink",
+        None,
+    )
+    assert client.calls[2] == (
         "PATCH",
         "/openapi/v1/omadac-1/sites/s1/aps/AA-BB-CC-DD-EE-FF/general-config",
         {"name": "hostname"},
@@ -150,6 +172,12 @@ def test_aps_resource_rejects_invalid_mac() -> None:
 
     try:
         resource.update(site_id="s1", mac="bad-mac", data={"name": "hostname"})
+        assert False, "Expected ValueError for invalid MAC"
+    except ValueError as exc:
+        assert "Invalid MAC address" in str(exc)
+
+    try:
+        resource.get_wired_uplink_by_mac(site_id="s1", mac="bad-mac")
         assert False, "Expected ValueError for invalid MAC"
     except ValueError as exc:
         assert "Invalid MAC address" in str(exc)
@@ -193,3 +221,31 @@ def test_aps_resource_applies_unknown_status_meaning_fallbacks() -> None:
 
     assert by_name["statusMeaning"] == "Unknown status: 99"
     assert by_name["detailStatusMeaning"] == "Unknown detailStatus: 999"
+
+
+def test_aps_resource_applies_unknown_wired_uplink_meaning_fallbacks() -> None:
+    class UnknownWiredUplinkClient(DummyClient):
+        def get(self, path: str, params=None):
+            self.calls.append(("GET", path, params))
+            if path.endswith("/wired-uplink"):
+                return {
+                    "result": {
+                        "wiredUplink": {
+                            "portType": 99,
+                            "linkStatus": 99,
+                            "linkSpeed": 99,
+                            "duplex": 99,
+                        }
+                    }
+                }
+            return {"result": {"mac": "AA-BB-CC-DD-EE-FF", "name": "AP-Overview"}}
+
+    client = UnknownWiredUplinkClient()
+    resource = APsResource(client)
+    wired_uplink = resource.get_wired_uplink_by_mac(site_id="s1", mac="aa:bb:cc:dd:ee:ff")
+
+    uplink = wired_uplink["result"]["wiredUplink"]
+    assert uplink["portTypeMeaning"] == "Unknown portType: 99"
+    assert uplink["linkStatusMeaning"] == "Unknown linkStatus: 99"
+    assert uplink["linkSpeedMeaning"] == "Unknown linkSpeed: 99"
+    assert uplink["duplexMeaning"] == "Unknown duplex: 99"

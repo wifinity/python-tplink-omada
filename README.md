@@ -161,6 +161,12 @@ ap_overview = client.aps.get_overview_by_mac(
     mac="AA-BB-CC-DD-EE-FF",
 )
 
+# Get AP wired uplink detail by MAC
+ap_wired_uplink = client.aps.get_wired_uplink_by_mac(
+    site_id="69e8b698f1c4806211fe52af",
+    mac="AA-BB-CC-DD-EE-FF",
+)
+
 # Delete/forget AP by MAC
 ap = client.aps.delete(site_id="69e8b698f1c4806211fe52af", mac="AA-BB-CC-DD-EE-FF")
 
@@ -192,6 +198,14 @@ records resolved from the AP-filtered device list flow.
 When AP MAC lookup misses, `client.aps.get_by_mac(...)` raises `DeviceNotFoundError`.
 `client.aps.get_overview_by_mac(...)` exposes the dedicated AP overview endpoint and can
 return a different result shape.
+`client.aps.get_wired_uplink_by_mac(...)` exposes the dedicated AP wired uplink endpoint.
+For numeric wired-uplink fields, the client preserves raw values and also adds:
+- `portTypeMeaning`
+- `linkStatusMeaning`
+- `linkSpeedMeaning`
+- `duplexMeaning`
+Unknown codes are preserved and mapped to deterministic fallback strings (for example
+`Unknown linkSpeed: <code>`).
 When `status` and `detailStatus` are present on DeviceInfo records, the client also adds
 `statusMeaning` and `detailStatusMeaning` with decoded human-readable labels.
 `client.aps.start_adopt(...)` and `client.aps.check_adopt(...)` are thin shortcut methods
