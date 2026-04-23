@@ -9,6 +9,7 @@ from .exceptions import (
     OmadaNotFoundError,
     OmadaPermissionError,
     OmadaValidationError,
+    WLANGroupNotFoundError,
 )
 from .logging_config import set_log_level
 
@@ -21,6 +22,7 @@ __all__ = [
     "OmadaNotFoundError",
     "OmadaValidationError",
     "OmadaConnectionError",
+    "WLANGroupNotFoundError",
     "set_log_level",
 ]
 
