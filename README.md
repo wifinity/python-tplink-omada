@@ -43,7 +43,7 @@ print(site)
 ### Named Parameters Policy
 
 Public resource methods are keyword-only and should be called with named arguments.
-This applies to `client.sites`, `client.devices`, `client.aps`, `client.wifi_networks`, and `client.ap_groups`.
+This applies to `client.sites`, `client.devices`, `client.aps`, `client.wifi_networks`, `client.wlan_groups`, and `client.ap_groups`.
 
 ### Client Initialization
 
@@ -196,6 +196,39 @@ When `status` and `detailStatus` are present on DeviceInfo records, the client a
 `statusMeaning` and `detailStatusMeaning` with decoded human-readable labels.
 `client.aps.start_adopt(...)` and `client.aps.check_adopt(...)` are thin shortcut methods
 that delegate to the canonical `client.devices` adopt operations.
+
+### Wireless Network Groups
+
+Use `client.wlan_groups` for WLAN group workflows:
+
+```python
+# List WLAN groups in a site
+wlan_groups = client.wlan_groups.all(site_id="69e8b698f1c4806211fe52af")
+
+# Create a WLAN group
+created_group = client.wlan_groups.create(
+    site_id="69e8b698f1c4806211fe52af",
+    name="Corp",
+)
+
+# Resolve a WLAN group by name
+wlan_group = client.wlan_groups.get(
+    site_id="69e8b698f1c4806211fe52af",
+    name="Corp",
+)
+
+# Delete a WLAN group by name
+delete_result = client.wlan_groups.delete(
+    site_id="69e8b698f1c4806211fe52af",
+    name="Corp",
+)
+```
+
+`client.wlan_groups.get(...)` and `client.wlan_groups.delete(...)` require exactly one
+selector (`id` or `name`). Name-based operations use exact-name matching and raise
+`WLANGroupNotFoundError` for missing groups, and `ValueError` for ambiguous matches.
+`client.wlan_groups.create(...)` accepts `name` directly and defaults `clone=False`
+unless explicitly overridden in `group_data`.
 
 ### Devices
 

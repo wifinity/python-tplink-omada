@@ -167,6 +167,7 @@ Resource methods had mixed positional and keyword calling patterns, which made c
   - `client.devices`
   - `client.aps`
   - `client.wifi_networks`
+  - `client.wlan_groups`
   - `client.ap_groups`
 - Standardize MAC argument naming to `mac` for device/AP lookup and action methods.
 - Treat positional usage for these public resource methods as unsupported.
@@ -303,3 +304,31 @@ AP users otherwise need to switch resource namespaces for adoption operations.
 - AP-centric call sites can perform adopt workflows without leaving `client.aps`.
 - Shared adopt behavior remains centralized, reducing drift and duplication.
 - Future AP-specific resources should continue to add convenience methods via delegation first.
+
+---
+
+## Decision 13 (2026-04): Site-scoped WLAN groups resource with name-based resolution
+
+### Context
+WLAN group operations are exposed by Omada under site-scoped wireless-network endpoints.
+The SDK needed first-class WLAN group workflows while preserving the repository's
+named-parameter policy and selector ergonomics already used in `SitesResource`.
+
+### Decision
+- Add `client.wlan_groups` as a public resource with keyword-only methods:
+  - `all(*, site_id, params=None)`
+  - `create(*, site_id, name=None, group_data=None)`
+  - `get(*, site_id, id=None, name=None)`
+  - `delete(*, site_id, id=None, name=None)`
+- Keep methods site-scoped via `site_id` to match Omada endpoint contracts.
+- Default create payload field `clone=False` when callers do not provide `clone`.
+- For `get(...)` and `delete(...)`, require exactly one selector (`id` xor `name`).
+- Implement name-based resolution with exact-name matching over list results and raise
+  `WLANGroupNotFoundError` for missing groups, plus explicit `ValueError` cases for duplicates
+  and missing `wlanId`.
+- Keep request paths compatible with `OmadaClient.api_path()` rewriting.
+
+### Consequences
+- WLAN group workflows are available through a consistent resource namespace in the SDK.
+- Callers get deterministic selector behavior aligned with existing site lookup patterns.
+- Name-based delete/get flows may require an additional list call before the terminal action.

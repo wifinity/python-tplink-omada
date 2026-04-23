@@ -33,6 +33,10 @@ class DeviceNotFoundError(OmadaNotFoundError):
     pass
 
 
+class WLANGroupNotFoundError(OmadaNotFoundError):
+    pass
+
+
 class OmadaValidationError(OmadaAPIError):
     def __init__(
         self,
