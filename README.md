@@ -160,6 +160,14 @@ ap_overview = client.aps.get_overview_by_mac(
     site_id="69e8b698f1c4806211fe52af",
     mac="AA-BB-CC-DD-EE-FF",
 )
+# ap_overview["result"]["wlanGroupName"] is added when wlanId can be resolved.
+
+# Switch AP WLAN group by group id or exact group name
+switch_result = client.aps.set_wlan_group_by_mac(
+    site_id="69e8b698f1c4806211fe52af",
+    mac="AA-BB-CC-DD-EE-FF",
+    wlan_group="Corp",
+)
 
 # Get AP wired uplink detail by MAC
 ap_wired_uplink = client.aps.get_wired_uplink_by_mac(
@@ -197,7 +205,10 @@ ap_update = client.aps.update(
 records resolved from the AP-filtered device list flow.
 When AP MAC lookup misses, `client.aps.get_by_mac(...)` raises `DeviceNotFoundError`.
 `client.aps.get_overview_by_mac(...)` exposes the dedicated AP overview endpoint and can
-return a different result shape.
+return a different result shape. When a `wlanId` (or legacy `wlan group id`) is present
+and resolvable, it also adds `result.wlanGroupName`.
+`client.aps.set_wlan_group_by_mac(...)` switches an AP to a target WLAN group through the
+AP WLAN-group endpoint. `wlan_group` accepts either a WLAN group id or exact name.
 `client.aps.get_wired_uplink_by_mac(...)` exposes the dedicated AP wired uplink endpoint.
 For numeric wired-uplink fields, the client preserves raw values and also adds:
 - `portTypeMeaning`

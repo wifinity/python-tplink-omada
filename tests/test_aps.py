@@ -63,6 +63,7 @@ class DummyDevicesResource:
 class DummyClient:
     def __init__(self) -> None:
         self.devices = DummyDevicesResource()
+        self.wlan_groups = DummyWLANGroupsResource()
         self.calls = []
 
     def get(self, path: str, params=None):
@@ -77,6 +78,32 @@ class DummyClient:
 
     def api_path(self, path: str) -> str:
         return f"/openapi/v1/omadac-1/{path.removeprefix('/openapi/v1/')}"
+
+
+class DummyWLANGroupsResource:
+    def __init__(self) -> None:
+        self.calls = []
+        self.by_id = {
+            "w1": {"wlanId": "w1", "name": "Corp"},
+            "w2": {"wlanId": "w2", "name": "Guest"},
+        }
+        self.by_name = {
+            "Corp": {"wlanId": "w1", "name": "Corp"},
+            "Guest": {"wlanId": "w2", "name": "Guest"},
+        }
+
+    def get(self, *, site_id: str, id: str | None = None, name: str | None = None):
+        if (id is None) == (name is None):
+            raise ValueError("Provide exactly one of 'id' or 'name'")
+        if id is not None:
+            self.calls.append(("id", site_id, id))
+            if id in self.by_id:
+                return self.by_id[id]
+            raise ValueError(f"WLAN group with id '{id}' was not found")
+        self.calls.append(("name", site_id, name))
+        if name in self.by_name:
+            return self.by_name[name]
+        raise ValueError(f"WLAN group with name '{name}' was not found")
 
 
 def test_aps_resource_delegates_to_devices_with_ap_options() -> None:
@@ -101,6 +128,11 @@ def test_aps_resource_delegates_to_devices_with_ap_options() -> None:
         site_id="s1",
         mac="aa:bb:cc:dd:ee:ff",
         data={"name": "hostname"},
+    )
+    switched_wlan_group = resource.set_wlan_group_by_mac(
+        site_id="s1",
+        mac="aa:bb:cc:dd:ee:ff",
+        wlan_group="Corp",
     )
 
     assert listed == {"items": []}
@@ -140,6 +172,7 @@ def test_aps_resource_delegates_to_devices_with_ap_options() -> None:
     assert checked_adopt == {"result": {"adoptErrorCode": 0, "adoptErrorMeaning": "Adopt Device Success"}}
     assert deleted == {"forgotten": True}
     assert updated == {"result": {"success": True}}
+    assert switched_wlan_group == {"result": {"success": True}}
     assert client.devices.calls[0] == ("list", "s1", 2, 50, {"deviceType": "ap", "searchKey": "ap"})
     assert client.devices.calls[1] == ("list", "s1", 1, 1000, {"searchKey": "AA-BB-CC-DD-EE-FF", "deviceType": "ap"})
     assert client.devices.calls[2] == ("list", "s1", 1, 1000, {"searchKey": "AP-1", "deviceType": "ap"})
@@ -158,6 +191,12 @@ def test_aps_resource_delegates_to_devices_with_ap_options() -> None:
         "/openapi/v1/omadac-1/sites/s1/aps/AA-BB-CC-DD-EE-FF/general-config",
         {"name": "hostname"},
     )
+    assert client.calls[3] == (
+        "PATCH",
+        "/openapi/v1/omadac-1/sites/s1/aps/AA-BB-CC-DD-EE-FF/wlan-group",
+        {"wlanGroupId": "w1"},
+    )
+    assert client.wlan_groups.calls == [("id", "s1", "Corp"), ("name", "s1", "Corp")]
 
 
 def test_aps_resource_rejects_invalid_mac() -> None:
@@ -249,3 +288,101 @@ def test_aps_resource_applies_unknown_wired_uplink_meaning_fallbacks() -> None:
     assert uplink["linkStatusMeaning"] == "Unknown linkStatus: 99"
     assert uplink["linkSpeedMeaning"] == "Unknown linkSpeed: 99"
     assert uplink["duplexMeaning"] == "Unknown duplex: 99"
+
+
+def test_get_overview_by_mac_enriches_wlan_group_name() -> None:
+    class OverviewWithWlanClient(DummyClient):
+        def get(self, path: str, params=None):
+            self.calls.append(("GET", path, params))
+            return {
+                "result": {
+                    "mac": "AA-BB-CC-DD-EE-FF",
+                    "name": "AP-Overview",
+                    "wlanId": "w1",
+                }
+            }
+
+    client = OverviewWithWlanClient()
+    resource = APsResource(client)
+
+    overview = resource.get_overview_by_mac(site_id="s1", mac="aa:bb:cc:dd:ee:ff")
+
+    assert overview["result"]["wlanId"] == "w1"
+    assert overview["result"]["wlanGroupName"] == "Corp"
+    assert client.wlan_groups.calls == [("id", "s1", "w1")]
+
+
+def test_get_overview_by_mac_ignores_wlan_group_lookup_failures() -> None:
+    class OverviewWithMissingWlanClient(DummyClient):
+        def get(self, path: str, params=None):
+            self.calls.append(("GET", path, params))
+            return {
+                "result": {
+                    "mac": "AA-BB-CC-DD-EE-FF",
+                    "name": "AP-Overview",
+                    "wlanId": "missing",
+                }
+            }
+
+    client = OverviewWithMissingWlanClient()
+    resource = APsResource(client)
+
+    overview = resource.get_overview_by_mac(site_id="s1", mac="aa:bb:cc:dd:ee:ff")
+
+    assert overview["result"]["wlanId"] == "missing"
+    assert "wlanGroupName" not in overview["result"]
+    assert client.wlan_groups.calls == [("id", "s1", "missing")]
+
+
+def test_get_overview_by_mac_supports_legacy_wlan_group_id_key() -> None:
+    class OverviewWithLegacyWlanKeyClient(DummyClient):
+        def get(self, path: str, params=None):
+            self.calls.append(("GET", path, params))
+            return {
+                "result": {
+                    "mac": "AA-BB-CC-DD-EE-FF",
+                    "name": "AP-Overview",
+                    "wlan group id": "w2",
+                }
+            }
+
+    client = OverviewWithLegacyWlanKeyClient()
+    resource = APsResource(client)
+
+    overview = resource.get_overview_by_mac(site_id="s1", mac="aa:bb:cc:dd:ee:ff")
+
+    assert overview["result"]["wlan group id"] == "w2"
+    assert overview["result"]["wlanGroupName"] == "Guest"
+    assert client.wlan_groups.calls == [("id", "s1", "w2")]
+
+
+def test_set_wlan_group_by_mac_accepts_group_id() -> None:
+    client = DummyClient()
+    resource = APsResource(client)
+
+    result = resource.set_wlan_group_by_mac(
+        site_id="s1",
+        mac="aa:bb:cc:dd:ee:ff",
+        wlan_group="w2",
+    )
+
+    assert result == {"result": {"success": True}}
+    assert client.calls == [
+        (
+            "PATCH",
+            "/openapi/v1/omadac-1/sites/s1/aps/AA-BB-CC-DD-EE-FF/wlan-group",
+            {"wlanGroupId": "w2"},
+        )
+    ]
+    assert client.wlan_groups.calls == [("id", "s1", "w2")]
+
+
+def test_set_wlan_group_by_mac_requires_non_empty_group() -> None:
+    client = DummyClient()
+    resource = APsResource(client)
+
+    try:
+        resource.set_wlan_group_by_mac(site_id="s1", mac="aa:bb:cc:dd:ee:ff", wlan_group="")
+        assert False, "Expected ValueError for empty wlan_group"
+    except ValueError as exc:
+        assert "wlan_group must be a non-empty string" in str(exc)
