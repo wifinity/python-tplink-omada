@@ -81,7 +81,7 @@ def test_aps_resource_delegates_to_devices_with_ap_options() -> None:
     client = DummyClient()
     resource = APsResource(client)
 
-    listed = resource.list(site_id="s1", page=2, page_size=50, searchKey="ap")
+    listed = resource.all(site_id="s1", page=2, page_size=50, searchKey="ap")
     by_mac = resource.get_by_mac(site_id="s1", mac="aa:bb:cc:dd:ee:ff")
     by_name = resource.get_by_name(site_id="s1", name="AP-1")
     overview = resource.get_overview_by_mac(site_id="s1", mac="aa:bb:cc:dd:ee:ff")

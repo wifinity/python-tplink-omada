@@ -53,7 +53,7 @@ Source: `spec/fixed/all-fixed.json`
 ## Typed facade reuse pattern
 
 - `APsResource` maps AP workflows onto canonical `DevicesResource` actions:
-  - `APsResource.list` -> `DevicesResource.list` with AP-specific query options
+  - `APsResource.all` -> `DevicesResource.list` with AP-specific query options
   - `APsResource.get_by_mac` -> `DevicesResource.get_by_mac(..., device_type="ap")`
   - `APsResource.create` -> `DevicesResource.add_by_device_key`
   - `APsResource.delete` -> `DevicesResource.delete`

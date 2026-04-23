@@ -146,8 +146,8 @@ site_detail_by_name = client.sites.get(name="johantest")
 Use `client.aps` for AP-focused workflows:
 
 ```python
-# List APs in a site (delegates to canonical devices.list with AP filter)
-aps = client.aps.list(site_id="your-site-id")
+# Retrieve all APs in a site (delegates to canonical devices.list with AP filter)
+aps = client.aps.all(site_id="your-site-id")
 
 # Get AP DeviceInfo by MAC (same item shape as /devices list data entries)
 ap_device = client.aps.get_by_mac(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
