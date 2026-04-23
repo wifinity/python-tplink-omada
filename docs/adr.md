@@ -363,3 +363,32 @@ The SDK previously had only a minimal Wi-Fi resource contract and needed first-c
 - SDK behavior matches Omada nesting semantics and avoids ambiguity about WLAN group scope.
 - Create flows remain ergonomic for callers while preserving explicit Omada payload control via overrides.
 - Unsupported legacy Ruckus-only types (`guest`, `hotspot20`) fail fast with actionable errors.
+
+---
+
+## Decision 15 (2026-04): Decode AP wired uplink enums into human-readable meaning fields
+
+### Context
+`client.aps.get_wired_uplink_by_mac(...)` returns numeric enum-like fields under
+`result.wiredUplink` (for example `portType`, `linkStatus`, `linkSpeed`, `duplex`).
+Consumers otherwise need to duplicate mapping tables to render understandable uplink state.
+
+### Decision
+- Enrich AP wired uplink payloads with decoded meaning fields while preserving numeric values:
+  - `portTypeMeaning` derived from `portType`
+  - `linkStatusMeaning` derived from `linkStatus`
+  - `linkSpeedMeaning` derived from `linkSpeed`
+  - `duplexMeaning` derived from `duplex`
+- Apply this enrichment in `client.aps.get_wired_uplink_by_mac(...)` on the native endpoint
+  response shape (`result.wiredUplink`).
+- Keep fallback handling deterministic for unknown numeric codes:
+  - `Unknown portType: <code>`
+  - `Unknown linkStatus: <code>`
+  - `Unknown linkSpeed: <code>`
+  - `Unknown duplex: <code>`
+
+### Consequences
+- Downstream callers get stable human-readable uplink state without maintaining local enum maps.
+- Raw numeric fields remain available for filtering and compatibility.
+- New controller enum values remain forward-compatible via unknown-code fallback strings until
+  mappings are explicitly updated.
