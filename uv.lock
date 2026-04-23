@@ -361,6 +361,15 @@ wheels = [
 ]
 
 [[package]]
+name = "macaddress"
+version = "2.0.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/dc/0f/e9b1028826cef8aa8d5f187b9fe2fd8f5b8c8ca393a11cffbcbe58f8a247/macaddress-2.0.2.tar.gz", hash = "sha256:1400ccdc28d747102d57ae61e5b78d8985872930810ceb8860cd49abd1e1fa37", size = 7927, upload-time = "2022-11-04T21:31:19.106Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6e/40/cfad5b515667b0465a3169757b5c9f17639dc1da145c65248e5b9fe481d8/macaddress-2.0.2-py3-none-any.whl", hash = "sha256:6f4a0430f9b5af6d98a582b8d527ba2cd3f0825fce5503a9ce5c73acb772c30f", size = 8027, upload-time = "2022-11-04T21:31:17.095Z" },
+]
+
+[[package]]
 name = "mccabe"
 version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
@@ -741,6 +750,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
+    { name = "macaddress" },
     { name = "openapi-spec-validator" },
     { name = "pycountry" },
 ]
@@ -759,6 +769,7 @@ requires-dist = [
     { name = "black", marker = "extra == 'dev'", specifier = ">=26.1.0" },
     { name = "flake8", marker = "extra == 'dev'", specifier = ">=7.1.0" },
     { name = "httpx", specifier = ">=0.27.0" },
+    { name = "macaddress", specifier = ">=2.0.2" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.11.0" },
     { name = "openapi-spec-validator", specifier = ">=0.7.1" },
     { name = "pycountry", specifier = ">=24.6.1" },

@@ -118,14 +118,10 @@ def test_create_site_requires_both_device_username_and_device_password() -> None
     client = DummyClient()
     resource = SitesResource(client)
 
-    with pytest.raises(
-        ValueError, match="device_username and device_password must be provided together"
-    ):
+    with pytest.raises(ValueError, match="device_username and device_password must be provided together"):
         resource.create(name="SiteA", device_username="admin")
 
-    with pytest.raises(
-        ValueError, match="device_username and device_password must be provided together"
-    ):
+    with pytest.raises(ValueError, match="device_username and device_password must be provided together"):
         resource.create(name="SiteA", device_password="StrongPassword!123")
 
 
@@ -309,9 +305,7 @@ def test_get_site_by_name_raises_when_site_id_missing() -> None:
     client.get_response = {"result": {"data": [{"name": "Main Site"}]}}
     resource = SitesResource(client)
 
-    with pytest.raises(
-        ValueError, match="Matched site 'Main Site' does not include a valid siteId"
-    ):
+    with pytest.raises(ValueError, match="Matched site 'Main Site' does not include a valid siteId"):
         resource.get(name="Main Site")
 
 

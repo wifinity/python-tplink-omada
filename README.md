@@ -40,6 +40,11 @@ print(site)
 
 ## Usage
 
+### Named Parameters Policy
+
+Public resource methods are keyword-only and should be called with named arguments.
+This applies to `client.sites`, `client.devices`, `client.aps`, `client.wifi_networks`, and `client.ap_groups`.
+
 ### Client Initialization
 
 ```python
@@ -135,6 +140,117 @@ site_detail = client.sites.get(id="69e8b698f1c4806211fe52af")
 # Same canonical detail by name lookup
 site_detail_by_name = client.sites.get(name="johantest")
 ```
+
+### Access Points
+
+Use `client.aps` for AP-focused workflows:
+
+```python
+# List APs in a site (delegates to canonical devices.list with AP filter)
+aps = client.aps.list(site_id="69e8b698f1c4806211fe52af")
+
+# Get AP DeviceInfo by MAC (same item shape as /devices list data entries)
+ap_device = client.aps.get_by_mac(site_id="69e8b698f1c4806211fe52af", mac="AA-BB-CC-DD-EE-FF")
+
+# Get AP DeviceInfo by AP name
+ap_device_by_name = client.aps.get_by_name(site_id="69e8b698f1c4806211fe52af", name="Lobby-AP-01")
+
+# Get AP overview payload by MAC (ApOverviewInfo-style endpoint)
+ap_overview = client.aps.get_overview_by_mac(
+    site_id="69e8b698f1c4806211fe52af",
+    mac="AA-BB-CC-DD-EE-FF",
+)
+
+# Delete/forget AP by MAC
+ap = client.aps.delete(site_id="69e8b698f1c4806211fe52af", mac="AA-BB-CC-DD-EE-FF")
+
+# Create/register AP in a site (device key onboarding flow)
+created_ap = client.aps.create(site_id="69e8b698f1c4806211fe52af", device_key="ZTP-DEVICE-KEY")
+
+# Start AP adopt by MAC (AP facade shortcut to devices.start_adopt)
+ap_adopt_result = client.aps.start_adopt(
+    site_id="69e8b698f1c4806211fe52af",
+    mac="AA-BB-CC-DD-EE-FF",
+)
+
+# Check AP adopt result by MAC (AP facade shortcut to devices.check_adopt)
+ap_adopt_status = client.aps.check_adopt(
+    site_id="69e8b698f1c4806211fe52af",
+    mac="AA-BB-CC-DD-EE-FF",
+)
+
+# Update AP general config by MAC
+ap_update = client.aps.update(
+    site_id="69e8b698f1c4806211fe52af",
+    mac="AA-BB-CC-DD-EE-FF",
+    data={"name": "hostname"},
+)
+```
+
+`client.aps.get_by_mac(...)` and `client.aps.get_by_name(...)` return DeviceInfo-style
+records resolved from the AP-filtered device list flow.
+When AP MAC lookup misses, `client.aps.get_by_mac(...)` raises `DeviceNotFoundError`.
+`client.aps.get_overview_by_mac(...)` exposes the dedicated AP overview endpoint and can
+return a different result shape.
+When `status` and `detailStatus` are present on DeviceInfo records, the client also adds
+`statusMeaning` and `detailStatusMeaning` with decoded human-readable labels.
+`client.aps.start_adopt(...)` and `client.aps.check_adopt(...)` are thin shortcut methods
+that delegate to the canonical `client.devices` adopt operations.
+
+### Devices
+
+```python
+# Start adopt by MAC using named parameters
+adopt_result = client.devices.start_adopt(
+    site_id="69e8b698f1c4806211fe52af",
+    mac="AA-BB-CC-DD-EE-FF",
+)
+
+# Optionally provide device login credentials for adoption
+adopt_result = client.devices.start_adopt(
+    site_id="69e8b698f1c4806211fe52af",
+    mac="AA-BB-CC-DD-EE-FF",
+    username="admin",
+    password="device-password",
+)
+
+# Check latest adopt result by MAC and get decoded meanings
+adopt_status = client.devices.check_adopt(
+    site_id="69e8b698f1c4806211fe52af",
+    mac="AA-BB-CC-DD-EE-FF",
+)
+# adopt_status["result"]["adoptErrorMeaning"]
+# adopt_status["result"]["adoptFailedTypeMeaning"]
+```
+
+`start_adopt` always sends a JSON body with `username` and `password`. When not
+provided, both fields default to `admin`.
+
+`check_adopt` calls `/adopt-result` and preserves the raw fields (`adoptErrorCode`,
+`adoptFailedType`) while adding `adoptErrorMeaning` and `adoptFailedTypeMeaning`
+derived from the Omada OpenAPI `AdoptResult` descriptions.
+
+MAC inputs are validated and normalized with the `macaddress` package. Public methods
+that accept `mac` support common EUI-48 forms (for example `AA:BB:CC:DD:EE:FF`,
+`AA-BB-CC-DD-EE-FF`, `AABBCCDDEEFF`, and `aabb.ccdd.eeff`) and always send
+`AA-BB-CC-DD-EE-FF` to the Omada API.
+
+For DeviceInfo-shaped lookup responses (for example `client.devices.get_by_mac(...)` and
+`client.aps.get_by_mac(...)`), when numeric `status`/`detailStatus` are present, the
+response also includes:
+- `statusMeaning`
+- `detailStatusMeaning`
+
+Unknown numeric codes are preserved and get deterministic fallback strings:
+- `Unknown status: <code>`
+- `Unknown detailStatus: <code>`
+
+### Device Resource Architecture
+
+`client.devices` is the canonical shared endpoint/action layer for device CRUD-like operations.
+Typed resources such as `client.aps` are thin facades that reuse `client.devices` with
+device-type-specific defaults and options. Future resources (for example switches) should
+follow the same facade-over-devices pattern.
 
 ## OpenAPI Spec Issues and Mitigation
 

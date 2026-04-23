@@ -2,6 +2,7 @@
 
 from .client import OmadaClient
 from .exceptions import (
+    DeviceNotFoundError,
     OmadaAPIError,
     OmadaAuthenticationError,
     OmadaConnectionError,
@@ -13,6 +14,7 @@ from .logging_config import set_log_level
 
 __all__ = [
     "OmadaClient",
+    "DeviceNotFoundError",
     "OmadaAPIError",
     "OmadaAuthenticationError",
     "OmadaPermissionError",

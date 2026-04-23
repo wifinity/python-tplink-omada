@@ -1,8 +1,9 @@
 """Resource exports."""
 
+from .aps import APsResource
 from .ap_groups import APGroupsResource
 from .devices import DevicesResource
 from .sites import SitesResource
 from .wifi_networks import WiFiNetworksResource
 
-__all__ = ["SitesResource", "DevicesResource", "WiFiNetworksResource", "APGroupsResource"]
+__all__ = ["SitesResource", "DevicesResource", "WiFiNetworksResource", "APGroupsResource", "APsResource"]

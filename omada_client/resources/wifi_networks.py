@@ -15,12 +15,13 @@ class WiFiNetworksResource:
             return cast(str, api_path(path))
         return path
 
-    def create(self, site_id: str, network_data: dict[str, Any]) -> dict[str, Any]:
+    def create(self, *, site_id: str, network_data: dict[str, Any]) -> dict[str, Any]:
         response = self.client.post(self._path(f"/openapi/v1/sites/{site_id}/wlans"), json=network_data)
         return cast(dict[str, Any], response)
 
     def assign_to_ap_group(
         self,
+        *,
         site_id: str,
         wlan_id: str,
         ap_group_id: str,
