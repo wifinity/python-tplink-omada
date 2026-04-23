@@ -332,3 +332,34 @@ named-parameter policy and selector ergonomics already used in `SitesResource`.
 - WLAN group workflows are available through a consistent resource namespace in the SDK.
 - Callers get deterministic selector behavior aligned with existing site lookup patterns.
 - Name-based delete/get flows may require an additional list call before the terminal action.
+
+---
+
+## Decision 14 (2026-04): Wi-Fi networks are SSIDs nested under WLAN groups
+
+### Context
+Omada exposes Wi-Fi network (SSID) operations under site + WLAN-group scoped endpoints:
+`/sites/{siteId}/wireless-network/wlans/{wlanId}/ssids`.
+The SDK previously had only a minimal Wi-Fi resource contract and needed first-class
+`all/get/delete/create` workflows aligned to the repository's keyword-only public API policy.
+
+### Decision
+- Implement `client.wifi_networks` as a site + WLAN-group scoped resource with keyword-only methods:
+  - `all(*, site_id, wlan_group, params=None)`
+  - `get(*, site_id, wlan_group, id=None, name=None)`
+  - `delete(*, site_id, wlan_group, id=None, name=None)`
+  - `create(*, site_id, wlan_group, name, type, ssid, network_data=None, **kwargs)`
+- Resolve `wlan_group` as id-or-name via `client.wlan_groups.get(...)`.
+- Require exactly one selector (`id` xor `name`) for `get(...)` and `delete(...)`, with exact-name matching.
+- Keep Wi-Fi create ergonomic with string `type` while mapping to Omada numeric `security` values:
+  - `open -> 0`
+  - `aaa -> 2`
+  - `psk -> 3`
+  - `dpsk -> 5` (PPSK with RADIUS)
+- Explicitly do not support `guest` or `hotspot20` in this SDK surface.
+
+### Consequences
+- Wi-Fi network operations are now consistent with existing resource patterns (`sites`, `wlan_groups`).
+- SDK behavior matches Omada nesting semantics and avoids ambiguity about WLAN group scope.
+- Create flows remain ergonomic for callers while preserving explicit Omada payload control via overrides.
+- Unsupported legacy Ruckus-only types (`guest`, `hotspot20`) fail fast with actionable errors.
