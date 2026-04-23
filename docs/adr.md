@@ -230,7 +230,7 @@ Callers also need an ergonomic way to provide device login credentials when adop
 
 ### Context
 `client.aps.get_by_mac(...)` previously returned data from the AP overview endpoint (`/aps/{apMac}`),
-while AP list workflows returned DeviceInfo entries from `/devices` with `deviceType=ap`.
+while AP collection workflows (`client.aps.all(...)`) returned DeviceInfo entries from `/devices` with `deviceType=ap`.
 This created an avoidable payload-shape mismatch for callers expecting `status`/`detailStatus` and
 other DeviceInfo fields when resolving APs by MAC.
 

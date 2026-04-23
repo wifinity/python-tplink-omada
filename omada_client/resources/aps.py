@@ -19,7 +19,7 @@ class APsResource:
             return cast(str, api_path(path))
         return path
 
-    def list(
+    def all(
         self,
         *,
         site_id: str,
