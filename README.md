@@ -230,6 +230,59 @@ selector (`id` or `name`). Name-based operations use exact-name matching and rai
 `client.wlan_groups.create(...)` accepts `name` directly and defaults `clone=False`
 unless explicitly overridden in `group_data`.
 
+### Wi-Fi Networks
+
+Use `client.wifi_networks` for SSID workflows scoped to a site and WLAN group:
+
+```python
+# List SSIDs under a WLAN group (wlan_group may be group id or name)
+wifi_networks = client.wifi_networks.all(
+    site_id="69e8b698f1c4806211fe52af",
+    wlan_group="Corp",
+)
+
+# Get SSID by name under the WLAN group
+wifi_network = client.wifi_networks.get(
+    site_id="69e8b698f1c4806211fe52af",
+    wlan_group="Corp",
+    name="GuestSSID",
+)
+
+# Delete SSID by name under the WLAN group
+delete_result = client.wifi_networks.delete(
+    site_id="69e8b698f1c4806211fe52af",
+    wlan_group="Corp",
+    name="GuestSSID",
+)
+
+# Create SSID (name and ssid must match for Omada create contract)
+created_wifi_network = client.wifi_networks.create(
+    site_id="69e8b698f1c4806211fe52af",
+    wlan_group="Corp",
+    ssid="GuestSSID",
+    type="psk",
+    psk="StrongPassphrase123!",
+)
+
+# DPSK maps to PPSK with RADIUS (security=5)
+created_dpsk_network = client.wifi_networks.create(
+    site_id="69e8b698f1c4806211fe52af",
+    wlan_group="Corp",
+    ssid="StaffSSID",
+    type="dpsk",
+    ppsk_setting={"radiusId": "radius-profile-id"},
+)
+```
+
+Supported `type` values are:
+- `open` (maps to `security=0`)
+- `aaa` (maps to `security=2`; requires `ent_setting`)
+- `psk` (maps to `security=3`; requires `psk` or `psk_setting`)
+- `dpsk` (maps to `security=5`; requires `ppsk_setting`)
+
+`guest` and `hotspot20` are intentionally unsupported in this SDK and raise `ValueError`.
+`name` is intentionally not accepted on create; set `ssid` only.
+
 ### Devices
 
 ```python
