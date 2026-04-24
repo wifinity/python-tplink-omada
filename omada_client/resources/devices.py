@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, List, cast
+from typing import Any, Dict, List, cast
 
 from ..mac import normalize_mac
 
@@ -78,7 +78,7 @@ class DevicesResource:
         query: dict[str, Any] = {"page": page, "pageSize": page_size}
         query.update(params)
         response = self.client.get(self._path(f"/openapi/v1/sites/{site_id}/devices"), params=query)
-        return cast(dict[str, Any], response)
+        return cast(Dict[str, Any], response)
 
     def get_by_mac(
         self,
@@ -91,7 +91,7 @@ class DevicesResource:
 
         if (device_type or "").lower() == "ap":
             response = self.client.get(self._path(f"/openapi/v1/sites/{site_id}/aps/{normalized_mac}"))
-            return cast(dict[str, Any], response)
+            return cast(Dict[str, Any], response)
 
         response = self.list(site_id=site_id, searchKey=normalized_mac)
         items = self._extract_device_items(response)
@@ -104,7 +104,7 @@ class DevicesResource:
                 item.get("macAddress"),
             ]
             if any(_matches_mac(value, normalized_mac) for value in values):
-                matched = cast(dict[str, Any], item)
+                matched = cast(Dict[str, Any], item)
                 augment_device_status_meanings(matched)
                 return matched
 
@@ -130,12 +130,12 @@ class DevicesResource:
             self._path(f"/openapi/v1/sites/{site_id}/devices/{normalized_mac}/start-adopt"),
             json=payload,
         )
-        return cast(dict[str, Any], response)
+        return cast(Dict[str, Any], response)
 
     def check_adopt(self, *, site_id: str, mac: str) -> dict[str, Any]:
         normalized_mac = normalize_mac(mac)
         response = cast(
-            dict[str, Any],
+            Dict[str, Any],
             self.client.get(self._path(f"/openapi/v1/sites/{site_id}/devices/{normalized_mac}/adopt-result")),
         )
         result = response.get("result")
@@ -163,32 +163,32 @@ class DevicesResource:
         response = self.client.post(
             self._path(f"/openapi/v1/sites/{site_id}/multi-devices/devicekey-add"), json=payload
         )
-        return cast(dict[str, Any], response)
+        return cast(Dict[str, Any], response)
 
     def delete(self, *, site_id: str, mac: str) -> dict[str, Any]:
         normalized_mac = normalize_mac(mac)
         response = self.client.post(self._path(f"/openapi/v1/sites/{site_id}/devices/{normalized_mac}/forget"))
-        return cast(dict[str, Any], response)
+        return cast(Dict[str, Any], response)
 
     def register(self, *, site_id: str, device_data: dict[str, Any]) -> dict[str, Any]:
         response = self.client.post(self._path(f"/openapi/v1/sites/{site_id}/devices"), json=device_data)
-        return cast(dict[str, Any], response)
+        return cast(Dict[str, Any], response)
 
     def remove(self, *, site_id: str, device_ids: List[str]) -> dict[str, Any]:
         payload = {"deviceIds": device_ids}
         response = self.client.delete(self._path(f"/openapi/v1/sites/{site_id}/devices"), json=payload)
-        return cast(dict[str, Any], response)
+        return cast(Dict[str, Any], response)
 
     def send_config(self, *, site_id: str, device_id: str, config: dict[str, Any]) -> dict[str, Any]:
         response = self.client.post(
             self._path(f"/openapi/v1/sites/{site_id}/devices/{device_id}/config"),
             json=config,
         )
-        return cast(dict[str, Any], response)
+        return cast(Dict[str, Any], response)
 
     def status(self, *, site_id: str, device_id: str) -> dict[str, Any]:
         response = self.client.get(self._path(f"/openapi/v1/sites/{site_id}/devices/{device_id}/status"))
-        return cast(dict[str, Any], response)
+        return cast(Dict[str, Any], response)
 
     @staticmethod
     def _extract_device_items(response: dict[str, Any]) -> List[Any]:

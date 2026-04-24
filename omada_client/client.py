@@ -102,7 +102,7 @@ class OmadaClient:
         prefix = f"/openapi/v1/{self.omadac_id}/"
         if path.startswith(prefix):
             return path
-        suffix = path.removeprefix("/openapi/v1/")
+        suffix = path[len("/openapi/v1/") :]
         return f"{prefix}{suffix}"
 
     def _request_with_retry(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
