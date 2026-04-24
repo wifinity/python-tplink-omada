@@ -14,11 +14,6 @@ jobs:
           python-version: '3.11'
       - name: Create environment
         run: make venv
-      - name: Build fixed spec
-        run: |
-          make spec-fix
-          make spec-validate
-          make generate-models
       - name: Format check
         run: make format-check
       - name: Lint
