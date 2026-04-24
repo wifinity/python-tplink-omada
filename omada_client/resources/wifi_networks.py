@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any, Dict, cast
 
 _SUPPORTED_WIFI_TYPES = ("open", "aaa", "psk", "dpsk")
 _TYPE_TO_SECURITY = {
@@ -191,7 +191,7 @@ class WiFiNetworksResource:
             raise ValueError("client.wlan_groups.get is required to resolve wlan_group")
 
         try:
-            by_id = cast(dict[str, Any], group_by_id_getter(site_id=site_id, id=wlan_group))
+            by_id = cast(Dict[str, Any], group_by_id_getter(site_id=site_id, id=wlan_group))
             by_id_wlan_id = self._extract_wlan_id(by_id)
             if by_id_wlan_id is not None:
                 return by_id_wlan_id
@@ -202,7 +202,7 @@ class WiFiNetworksResource:
             # Fall back to name-based resolution when id lookup fails.
             pass
 
-        by_name = cast(dict[str, Any], group_by_id_getter(site_id=site_id, name=wlan_group))
+        by_name = cast(Dict[str, Any], group_by_id_getter(site_id=site_id, name=wlan_group))
         by_name_wlan_id = self._extract_wlan_id(by_name)
         if by_name_wlan_id is None:
             raise ValueError(f"Matched WLAN group '{wlan_group}' does not include a valid wlanId")
@@ -219,7 +219,7 @@ class WiFiNetworksResource:
             self._path(f"/openapi/v1/sites/{site_id}/wireless-network/wlans/{wlan_id}/ssids"),
             params=self._default_list_params({"searchKey": name}),
         )
-        networks = self._coerce_list_response(cast(dict[str, Any], response))
+        networks = self._coerce_list_response(cast(Dict[str, Any], response))
         exact_matches = [item for item in networks if isinstance(item.get("name"), str) and item["name"] == name]
         if not exact_matches:
             raise ValueError(f"Wi-Fi network with name '{name}' was not found")
@@ -239,7 +239,7 @@ class WiFiNetworksResource:
             self._path(f"/openapi/v1/sites/{site_id}/wireless-network/wlans/{wlan_id}/ssids"),
             params=self._default_list_params(params),
         )
-        return self._coerce_list_response(cast(dict[str, Any], response))
+        return self._coerce_list_response(cast(Dict[str, Any], response))
 
     def get(
         self,
@@ -257,7 +257,7 @@ class WiFiNetworksResource:
             response = self.client.get(
                 self._path(f"/openapi/v1/sites/{site_id}/wireless-network/wlans/{wlan_id}/ssids/{id}")
             )
-            payload = cast(dict[str, Any], response)
+            payload = cast(Dict[str, Any], response)
             result = payload.get("result")
             if isinstance(result, dict):
                 return result
@@ -291,7 +291,7 @@ class WiFiNetworksResource:
         response = self.client.delete(
             self._path(f"/openapi/v1/sites/{site_id}/wireless-network/wlans/{wlan_id}/ssids/{ssid_id}")
         )
-        return cast(dict[str, Any], response)
+        return cast(Dict[str, Any], response)
 
     def create(
         self,
@@ -325,7 +325,7 @@ class WiFiNetworksResource:
             self._path(f"/openapi/v1/sites/{site_id}/wireless-network/wlans/{wlan_id}/ssids"),
             json=payload,
         )
-        return cast(dict[str, Any], response)
+        return cast(Dict[str, Any], response)
 
     def assign_to_ap_group(
         self,
@@ -339,4 +339,4 @@ class WiFiNetworksResource:
             self._path(f"/openapi/v1/sites/{site_id}/wlans/{wlan_id}/ap-groups"),
             json=payload,
         )
-        return cast(dict[str, Any], response)
+        return cast(Dict[str, Any], response)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import cast
+from typing import Dict, cast
 
 import pytest
 
@@ -177,12 +177,12 @@ def test_wifi_create_psk_builds_payload_and_overrides() -> None:
     )
 
     assert client.post_calls[0][0] == "/openapi/v1/sites/s1/wireless-network/wlans/w1/ssids"
-    sent = cast(dict[str, object], client.post_calls[0][1])
+    sent = cast(Dict[str, object], client.post_calls[0][1])
     assert sent["security"] == 3
     assert sent["name"] == "GuestSSID"
     assert sent["band"] == 7
     assert sent["pmfMode"] == 3
-    psk_setting = cast(dict[str, object], sent["pskSetting"])
+    psk_setting = cast(Dict[str, object], sent["pskSetting"])
     assert psk_setting["securityKey"] == "initial-pass"
     assert psk_setting["versionPsk"] == 2
     assert psk_setting["encryptionPsk"] == 3
@@ -202,7 +202,7 @@ def test_wifi_create_dpsk_maps_to_security_five() -> None:
         ppsk_setting={"radiusId": "r1"},
     )
 
-    sent = cast(dict[str, object], client.post_calls[0][1])
+    sent = cast(Dict[str, object], client.post_calls[0][1])
     assert sent["security"] == 5
     assert "ppskSetting" in sent
 
@@ -220,7 +220,7 @@ def test_wifi_create_maps_vlan_shortcut_to_vlan_enable_and_vlan_id() -> None:
         vlan=99,
     )
 
-    sent = cast(dict[str, object], client.post_calls[0][1])
+    sent = cast(Dict[str, object], client.post_calls[0][1])
     assert sent["vlanEnable"] is True
     assert sent["vlanId"] == 99
     assert "vlan" not in sent

@@ -77,7 +77,7 @@ class DummyClient:
         return {"result": {"success": True}}
 
     def api_path(self, path: str) -> str:
-        return f"/openapi/v1/omadac-1/{path.removeprefix('/openapi/v1/')}"
+        return f"/openapi/v1/omadac-1/{path[len('/openapi/v1/'):]}"
 
 
 class DummyWLANGroupsResource:

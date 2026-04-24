@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, cast
+from typing import Any, Dict, cast
 
 import pycountry
 
@@ -73,14 +73,14 @@ class SitesResource:
 
     def all(self, *, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         response = self.client.get(self._path("/openapi/v1/sites"), params=self._site_list_params(params))
-        return self._coerce_list_response(cast(dict[str, Any], response))
+        return self._coerce_list_response(cast(Dict[str, Any], response))
 
     def get(self, *, id: str | None = None, name: str | None = None) -> dict[str, Any]:
         if (id is None) == (name is None):
             raise ValueError("Provide exactly one of 'id' or 'name'")
 
         if id is not None:
-            response = cast(dict[str, Any], self.client.get(self._path(f"/openapi/v1/sites/{id}")))
+            response = cast(Dict[str, Any], self.client.get(self._path(f"/openapi/v1/sites/{id}")))
             result = response.get("result")
             if isinstance(result, dict):
                 return result
@@ -130,4 +130,4 @@ class SitesResource:
             )
 
         response = self.client.post(self._path("/openapi/v1/sites"), json=payload)
-        return cast(dict[str, Any], response)
+        return cast(Dict[str, Any], response)
