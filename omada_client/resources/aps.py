@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, List, cast
+from typing import Any, Dict, List, cast
 
 from ..mac import normalize_mac
 from ..exceptions import DeviceNotFoundError
@@ -57,14 +57,14 @@ class APsResource:
         **params: Any,
     ) -> dict[str, Any]:
         return cast(
-            dict[str, Any],
+            Dict[str, Any],
             self.client.devices.list(site_id=site_id, page=page, page_size=page_size, deviceType="ap", **params),
         )
 
     def get_by_mac(self, *, site_id: str, mac: str) -> dict[str, Any]:
         normalized_mac = normalize_mac(mac)
         response = cast(
-            dict[str, Any],
+            Dict[str, Any],
             self.client.devices.list(site_id=site_id, searchKey=normalized_mac, deviceType="ap"),
         )
         items = self._extract_items(response)
@@ -72,14 +72,14 @@ class APsResource:
             if not isinstance(item, dict):
                 continue
             if self._matches_mac(item.get("mac"), normalized_mac):
-                matched = cast(dict[str, Any], item)
+                matched = cast(Dict[str, Any], item)
                 augment_device_status_meanings(matched)
                 return matched
         raise DeviceNotFoundError(f"AP with MAC '{mac}' not found in site '{site_id}'")
 
     def get_by_name(self, *, site_id: str, name: str) -> dict[str, Any]:
         response = cast(
-            dict[str, Any],
+            Dict[str, Any],
             self.client.devices.list(site_id=site_id, searchKey=name, deviceType="ap"),
         )
         items = self._extract_items(response)
@@ -88,7 +88,7 @@ class APsResource:
             if not isinstance(item, dict):
                 continue
             if item.get("name") == name:
-                matched = cast(dict[str, Any], item)
+                matched = cast(Dict[str, Any], item)
                 augment_device_status_meanings(matched)
                 exact_matches.append(matched)
         if len(exact_matches) == 1:
@@ -100,7 +100,7 @@ class APsResource:
     def get_overview_by_mac(self, *, site_id: str, mac: str) -> dict[str, Any]:
         normalized_mac = normalize_mac(mac)
         response = cast(
-            dict[str, Any], self.client.get(self._path(f"/openapi/v1/sites/{site_id}/aps/{normalized_mac}"))
+            Dict[str, Any], self.client.get(self._path(f"/openapi/v1/sites/{site_id}/aps/{normalized_mac}"))
         )
         self._augment_overview_wlan_group_name(response=response, site_id=site_id)
         return response
@@ -108,14 +108,14 @@ class APsResource:
     def get_wired_uplink_by_mac(self, *, site_id: str, mac: str) -> dict[str, Any]:
         normalized_mac = normalize_mac(mac)
         response = cast(
-            dict[str, Any],
+            Dict[str, Any],
             self.client.get(self._path(f"/openapi/v1/sites/{site_id}/aps/{normalized_mac}/wired-uplink")),
         )
         self._augment_wired_uplink_meanings(response)
         return response
 
     def create(self, *, site_id: str, device_key: str) -> dict[str, Any]:
-        return cast(dict[str, Any], self.client.devices.add_by_device_key(site_id=site_id, device_key=device_key))
+        return cast(Dict[str, Any], self.client.devices.add_by_device_key(site_id=site_id, device_key=device_key))
 
     def start_adopt(
         self,
@@ -126,21 +126,21 @@ class APsResource:
         password: str | None = None,
     ) -> dict[str, Any]:
         return cast(
-            dict[str, Any],
+            Dict[str, Any],
             self.client.devices.start_adopt(site_id=site_id, mac=mac, username=username, password=password),
         )
 
     def check_adopt(self, *, site_id: str, mac: str) -> dict[str, Any]:
-        return cast(dict[str, Any], self.client.devices.check_adopt(site_id=site_id, mac=mac))
+        return cast(Dict[str, Any], self.client.devices.check_adopt(site_id=site_id, mac=mac))
 
     def delete(self, *, site_id: str, mac: str) -> dict[str, Any]:
         normalized_mac = normalize_mac(mac)
-        return cast(dict[str, Any], self.client.devices.delete(site_id=site_id, mac=normalized_mac))
+        return cast(Dict[str, Any], self.client.devices.delete(site_id=site_id, mac=normalized_mac))
 
     def update(self, *, site_id: str, mac: str, data: dict[str, Any]) -> dict[str, Any]:
         normalized_mac = normalize_mac(mac)
         return cast(
-            dict[str, Any],
+            Dict[str, Any],
             self.client.patch(
                 self._path(f"/openapi/v1/sites/{site_id}/aps/{normalized_mac}/general-config"),
                 json=data,
@@ -151,7 +151,7 @@ class APsResource:
         normalized_mac = normalize_mac(mac)
         wlan_group_id = self._resolve_wlan_group_id(site_id=site_id, wlan_group=wlan_group)
         return cast(
-            dict[str, Any],
+            Dict[str, Any],
             self.client.patch(
                 self._path(f"/openapi/v1/sites/{site_id}/aps/{normalized_mac}/wlan-group"),
                 json={"wlanGroupId": wlan_group_id},
@@ -252,7 +252,7 @@ class APsResource:
         if not callable(getter):
             return None
         try:
-            group = cast(dict[str, Any], getter(site_id=site_id, id=wlan_group_id))
+            group = cast(Dict[str, Any], getter(site_id=site_id, id=wlan_group_id))
         except Exception:
             return None
         name = group.get("name")
@@ -271,14 +271,14 @@ class APsResource:
             raise ValueError("client.wlan_groups.get is required to resolve wlan_group")
 
         try:
-            by_id = cast(dict[str, Any], group_by_id_getter(site_id=site_id, id=wlan_group))
+            by_id = cast(Dict[str, Any], group_by_id_getter(site_id=site_id, id=wlan_group))
         except Exception:
             by_id = {}
         wlan_id = self._extract_wlan_group_id(by_id)
         if wlan_id is not None:
             return wlan_id
 
-        by_name = cast(dict[str, Any], group_by_id_getter(site_id=site_id, name=wlan_group))
+        by_name = cast(Dict[str, Any], group_by_id_getter(site_id=site_id, name=wlan_group))
         wlan_id = self._extract_wlan_group_id(by_name)
         if wlan_id is None:
             raise ValueError(f"Matched WLAN group '{wlan_group}' does not include a valid wlanId")

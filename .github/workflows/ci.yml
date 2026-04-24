@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  test:
+  tests:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -19,6 +19,21 @@ jobs:
       - uses: astral-sh/setup-uv@v3
         with:
           version: "latest"
+      - name: Test
+        run: |
+          make venv
+          make unit-tests
+
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
       - name: Create environment
         run: make venv
       - name: Format check
@@ -27,5 +42,3 @@ jobs:
         run: make lint
       - name: Type check
         run: make typecheck
-      - name: Test
-        run: make tests
