@@ -275,6 +275,41 @@ def test_update_site_uses_api_path_rewrite() -> None:
     assert client.last_path == "/openapi/v1/omadac-1/sites/site-1"
 
 
+def test_update_site_applies_create_defaults_when_values_omitted() -> None:
+    client = DummyClient()
+    resource = SitesResource(client)
+
+    result = resource.update(id="site-1")
+
+    assert client.last_json == {
+        "region": "United Kingdom",
+        "scenario": "Dormitory",
+        "timeZone": "UTC",
+    }
+    assert result == {
+        "siteId": "site-1",
+        "region": "United Kingdom",
+        "scenario": "Dormitory",
+        "timeZone": "UTC",
+    }
+
+
+def test_update_site_explicit_values_override_defaults() -> None:
+    client = DummyClient()
+    resource = SitesResource(client)
+
+    resource.update(
+        id="site-1",
+        region="United States",
+        scenario="Work",
+        timezone="Europe/London",
+    )
+
+    assert client.last_json["region"] == "United States"
+    assert client.last_json["scenario"] == "Work"
+    assert client.last_json["timeZone"] == "Europe/London"
+
+
 def test_all_sites_returns_result_data_list() -> None:
     client = DummyClient()
     client.get_response = {"result": {"data": [{"siteId": "site-1", "name": "Main Site"}]}}

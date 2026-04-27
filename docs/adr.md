@@ -392,3 +392,27 @@ Consumers otherwise need to duplicate mapping tables to render understandable up
 - Raw numeric fields remain available for filtering and compatibility.
 - New controller enum values remain forward-compatible via unknown-code fallback strings until
   mappings are explicitly updated.
+
+---
+
+## Decision 16 (2026-04): Apply site update defaults by default
+
+### Context
+Site creation already applies required Omada fields by default (`region`, `scenario`, `timeZone`),
+but update callers that omitted those inputs relied on ad-hoc wrapper behavior and could leak null-like
+values into update requests.
+This caused avoidable runtime API failures in automation wrappers where update payloads were built from
+partially populated input context.
+
+### Decision
+- Make `SitesResource.update(...)` apply the same default values used by create when update values are omitted:
+  - `region="United Kingdom"`
+  - `scenario="Dormitory"`
+  - `timezone="UTC"` mapped to `timeZone`
+- Preserve explicit caller overrides when values are provided.
+- Keep region validation for the effective region value in update requests.
+
+### Consequences
+- Update calls are safer by default for primary automation workflows.
+- Omitted update fields now produce deterministic Omada-compatible payloads instead of omission semantics.
+- Wrappers can still set explicit non-default values when required by workflow policy.
