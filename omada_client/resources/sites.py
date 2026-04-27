@@ -131,3 +131,44 @@ class SitesResource:
 
         response = self.client.post(self._path("/openapi/v1/sites"), json=payload)
         return cast(Dict[str, Any], response)
+
+    def update(
+        self,
+        *,
+        id: str,
+        name: str | None = None,
+        region: str | None = None,
+        scenario: str | None = None,
+        timezone: str | None = None,
+        device_username: str | None = None,
+        device_password: str | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {}
+
+        if name is not None:
+            payload["name"] = name
+
+        if region is not None:
+            self._validate_region(region)
+            payload["region"] = region
+
+        if scenario is not None:
+            payload["scenario"] = scenario
+
+        if timezone is not None:
+            payload["timeZone"] = timezone
+
+        if (device_username is None) ^ (device_password is None):
+            raise ValueError("device_username and device_password must be provided together")
+
+        if device_username is not None and device_password is not None:
+            payload["deviceAccountSetting"] = {
+                "username": device_username,
+                "password": device_password,
+            }
+
+        response = cast(Dict[str, Any], self.client.put(self._path(f"/openapi/v1/sites/{id}"), json=payload))
+        result = response.get("result")
+        if isinstance(result, dict):
+            return result
+        return response

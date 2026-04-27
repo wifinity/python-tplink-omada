@@ -86,6 +86,30 @@ site_custom = client.sites.create(
 )
 ```
 
+### Updating Sites
+
+Use `client.sites.update(...)` to update an existing site by id. It accepts the
+same field set used for site create flows:
+
+- `name`
+- `region`
+- `scenario`
+- `timezone` (mapped to API field `timeZone`)
+- `device_username`
+- `device_password`
+
+```python
+updated_site = client.sites.update(
+    id="69e8b698f1c4806211fe52af",
+    name="London HQ",
+    region="United Kingdom",
+    scenario="Work",
+    timezone="Europe/London",
+    device_username="site-admin",
+    device_password="AnotherStrongPassword!123",
+)
+```
+
 ### Reading Sites
 
 Use `client.sites.all()` to fetch all sites and `client.sites.get(...)` to resolve one site.
