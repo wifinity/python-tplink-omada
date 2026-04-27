@@ -7,6 +7,10 @@ from typing import Any, Dict, cast
 
 import pycountry
 
+DEFAULT_REGION = "United Kingdom"
+DEFAULT_SCENARIO = "Dormitory"
+DEFAULT_TIME_ZONE = "UTC"
+
 
 class SitesResource:
     def __init__(self, client: Any) -> None:
@@ -101,9 +105,9 @@ class SitesResource:
         self,
         *,
         name: str,
-        region: str = "United Kingdom",
-        scenario: str = "Dormitory",
-        time_zone: str = "UTC",
+        region: str = DEFAULT_REGION,
+        scenario: str = DEFAULT_SCENARIO,
+        time_zone: str = DEFAULT_TIME_ZONE,
         device_username: str | None = None,
         device_password: str | None = None,
         **kwargs: Any,
@@ -144,19 +148,19 @@ class SitesResource:
         device_password: str | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {}
+        effective_region = region if region is not None else DEFAULT_REGION
+        effective_scenario = scenario if scenario is not None else DEFAULT_SCENARIO
+        effective_timezone = timezone if timezone is not None else DEFAULT_TIME_ZONE
 
         if name is not None:
             payload["name"] = name
 
-        if region is not None:
-            self._validate_region(region)
-            payload["region"] = region
+        self._validate_region(effective_region)
+        payload["region"] = effective_region
 
-        if scenario is not None:
-            payload["scenario"] = scenario
+        payload["scenario"] = effective_scenario
 
-        if timezone is not None:
-            payload["timeZone"] = timezone
+        payload["timeZone"] = effective_timezone
 
         if (device_username is None) ^ (device_password is None):
             raise ValueError("device_username and device_password must be provided together")
