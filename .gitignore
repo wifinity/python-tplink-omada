@@ -31,3 +31,5 @@ htmlcov/
 
 # Local scratch script
 /test.py
+
+uv.lock

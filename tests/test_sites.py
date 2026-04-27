@@ -19,6 +19,11 @@ class DummyClient:
         self.last_json = json
         return {"ok": True}
 
+    def put(self, path: str, json):
+        self.last_path = path
+        self.last_json = json
+        return {"result": {"siteId": "site-1", **json}}
+
     def get(self, path: str, params=None):
         self.last_path = path
         self.last_params = params
@@ -202,6 +207,72 @@ def test_create_site_uses_api_path_rewrite() -> None:
     )
 
     assert client.last_path == "/openapi/v1/omadac-1/sites"
+
+
+def test_update_site_maps_timezone_and_returns_result() -> None:
+    client = DummyClient()
+    resource = SitesResource(client)
+
+    result = resource.update(
+        id="site-1",
+        name="Updated Site",
+        region="United Kingdom",
+        scenario="Work",
+        timezone="Europe/London",
+        device_username="admin",
+        device_password="StrongPassword!123",
+    )
+
+    assert client.last_path == "/openapi/v1/sites/site-1"
+    assert client.last_json == {
+        "name": "Updated Site",
+        "region": "United Kingdom",
+        "scenario": "Work",
+        "timeZone": "Europe/London",
+        "deviceAccountSetting": {
+            "username": "admin",
+            "password": "StrongPassword!123",
+        },
+    }
+    assert result == {
+        "siteId": "site-1",
+        "name": "Updated Site",
+        "region": "United Kingdom",
+        "scenario": "Work",
+        "timeZone": "Europe/London",
+        "deviceAccountSetting": {
+            "username": "admin",
+            "password": "StrongPassword!123",
+        },
+    }
+
+
+def test_update_site_requires_both_device_username_and_device_password() -> None:
+    client = DummyClient()
+    resource = SitesResource(client)
+
+    with pytest.raises(ValueError, match="device_username and device_password must be provided together"):
+        resource.update(id="site-1", device_username="admin")
+
+    with pytest.raises(ValueError, match="device_username and device_password must be provided together"):
+        resource.update(id="site-1", device_password="StrongPassword!123")
+
+
+def test_update_site_region_validation_rejects_invalid_country_name() -> None:
+    client = DummyClient()
+    resource = SitesResource(client)
+
+    with pytest.raises(ValueError, match="Invalid country name 'United Kingdon'"):
+        resource.update(id="site-1", region="United Kingdon")
+
+
+def test_update_site_uses_api_path_rewrite() -> None:
+    client = OmadacPathDummyClient()
+    resource = SitesResource(client)
+
+    resource.update(id="site-1", timezone="UTC")
+
+    assert client.last_path == "/openapi/v1/omadac-1/sites/site-1"
 
 
 def test_all_sites_returns_result_data_list() -> None:
