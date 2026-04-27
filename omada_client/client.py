@@ -135,6 +135,18 @@ class OmadaClient:
         payload = _parse_payload(response)
         if response.status_code < 400:
             if isinstance(payload, dict):
+                error_code = payload.get("errorCode")
+                if error_code not in (None, 0):
+                    message = _extract_message(
+                        payload,
+                        default=f"Omada API errorCode={error_code}",
+                    )
+                    raise OmadaAPIError(
+                        message,
+                        status_code=response.status_code,
+                        response_data=payload,
+                    )
+            if isinstance(payload, dict):
                 return payload
             return {"result": payload}
 

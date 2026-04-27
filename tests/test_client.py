@@ -4,7 +4,11 @@ import httpx
 import pytest
 
 from omada_client import OmadaClient
-from omada_client.exceptions import OmadaAuthenticationError, OmadaNotFoundError
+from omada_client.exceptions import (
+    OmadaAPIError,
+    OmadaAuthenticationError,
+    OmadaNotFoundError,
+)
 
 
 class DummyAuth:
@@ -38,6 +42,46 @@ def test_successful_get_response() -> None:
     payload = client.get("/openapi/v1/sites")
 
     assert payload == {"ok": True}
+
+
+def test_successful_get_response_with_zero_error_code() -> None:
+    client = OmadaClient(
+        base_url="https://controller.example",
+        omadac_id="omadac-1",
+        client_id="id",
+        client_secret="secret",
+    )
+    client.auth = DummyAuth()  # type: ignore[assignment]
+    client._http = _mock_http(httpx.Response(200, json={"errorCode": 0, "result": {"ok": True}}))
+
+    payload = client.get("/openapi/v1/sites")
+
+    assert payload["errorCode"] == 0
+    assert payload["result"] == {"ok": True}
+
+
+def test_non_zero_error_code_on_200_raises_api_error() -> None:
+    client = OmadaClient(
+        base_url="https://controller.example",
+        omadac_id="omadac-1",
+        client_id="id",
+        client_secret="secret",
+    )
+    client.auth = DummyAuth()  # type: ignore[assignment]
+    client._http = _mock_http(
+        httpx.Response(
+            200,
+            json={"errorCode": -30105, "msg": "Invalid password"},
+        )
+    )
+
+    with pytest.raises(OmadaAPIError, match="Invalid password") as error_info:
+        client.get("/openapi/v1/sites")
+
+    assert error_info.value.response_data == {
+        "errorCode": -30105,
+        "msg": "Invalid password",
+    }
 
 
 def test_401_clears_token() -> None:
