@@ -6,6 +6,7 @@ from omada_client.resources.devices import DevicesResource
 class DummyClient:
     def __init__(self) -> None:
         self.calls = []
+        self.olts = DummyOLTs()
 
     def post(self, path: str, json=None):
         self.calls.append(("POST", path, json))
@@ -45,6 +46,17 @@ class DummyClient:
                 }
             return {"result": {"data": [{"deviceMac": "00:11:22:33:44:55"}]}}
         return {"status": "online"}
+
+
+class DummyOLTs:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def get_onu_detail_by_mac(
+        self, *, site_id: str, olt_mac: str, pon_port: str, onu_mac: str, params=None
+    ) -> dict[str, object]:
+        self.calls.append(("get_onu_detail_by_mac", site_id, olt_mac, pon_port, onu_mac, params))
+        return {"result": {"ok": True}}
 
 
 def test_device_workflow_calls_expected_paths() -> None:
@@ -334,3 +346,20 @@ def test_check_adopt_invalid_mac_raises_before_http_call() -> None:
         assert "Invalid MAC address" in str(exc)
 
     assert client.calls == []
+
+
+def test_devices_get_onu_detail_by_mac_delegates_to_client_olts() -> None:
+    client = DummyClient()
+    resource = DevicesResource(client)
+
+    payload = resource.get_onu_detail_by_mac(
+        site_id="s1",
+        olt_mac="9C-53-22-71-A3-54",
+        pon_port="GPON 1/1/1",
+        onu_mac="F0-09-0D-E4-09-83",
+    )
+
+    assert payload == {"result": {"ok": True}}
+    assert client.olts.calls == [
+        ("get_onu_detail_by_mac", "s1", "9C-53-22-71-A3-54", "GPON 1/1/1", "F0-09-0D-E4-09-83", None)
+    ]

@@ -370,6 +370,25 @@ Typed resources such as `client.aps` are thin facades that reuse `client.devices
 device-type-specific defaults and options. Future resources (for example switches) should
 follow the same facade-over-devices pattern.
 
+### OLT / ONU optics (GPON)
+
+Use `client.olts` to query ONU optical telemetry from an upstream OLT. The Omada API requires an ONU **`key`**
+identifier for detail telemetry; this SDK provides a MAC-based convenience method that resolves the key via the
+ONU list endpoint.
+
+```python
+onu_detail = client.olts.get_onu_detail_by_mac(
+    site_id="69e8b698f1c4806211fe52af",
+    olt_mac="9C-53-22-71-A3-54",
+    pon_port="GPON 1/1/1",
+    onu_mac="F0-09-0D-E4-09-83",
+)
+
+# Raw Omada payload, for example:
+# onu_detail["result"]["onuOpticalLinkInformation"]["receivedOpticalPower"]
+# onu_detail["result"]["onuOpticalLinkInformation"]["transmittedOpticalPower"]
+```
+
 ## OpenAPI Spec Issues and Mitigation
 
 The published Omada OpenAPI spec contains recurring defects that make direct generation brittle for a stable SDK:
