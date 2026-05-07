@@ -416,3 +416,30 @@ partially populated input context.
 - Update calls are safer by default for primary automation workflows.
 - Omitted update fields now produce deterministic Omada-compatible payloads instead of omission semantics.
 - Wrappers can still set explicit non-default values when required by workflow policy.
+
+---
+
+## Decision 17 (2026-05): Add OLT/ONU optics resource with MAC-to-key resolution
+
+### Context
+Omada exposes GPON ONU telemetry (optical power, voltage, bias current, temperature, etc.) via OLT-scoped endpoints.
+The ONU detail endpoint requires an internal ONU identifier (`key`, for example `1-1-1_0`) rather than the ONU's MAC
+address, which makes direct “MAC → optics” workflows awkward for automation.
+
+### Decision
+- Add a new public resource `client.olts` to encapsulate OLT/ONU operations with keyword-only methods:
+  - `list_onus(*, site_id, olt_mac, pon_port, params=None)`
+  - `get_onu_detail(*, site_id, olt_mac, onu_key, params=None)` (detail endpoint requires `key`)
+  - `resolve_onu_key(*, site_id, olt_mac, pon_port, onu_mac)` (list + MAC match → `key`)
+  - `get_onu_detail_by_mac(*, site_id, olt_mac, pon_port, onu_mac, params=None)` (convenience: resolve key then fetch detail)
+- Normalize MAC inputs for path construction and matching, using the existing `macaddress`-based helper.
+- Return API payloads as-is (no field renaming or unit normalization) to preserve Omada compatibility and avoid
+  creating a second “normalized schema” surface.
+- Keep request paths compatible with `OmadaClient.api_path()` rewriting.
+
+### Consequences
+- Downstream automation can query ONU optics by MAC with a single call (`get_onu_detail_by_mac`), while retaining
+  access to the underlying key-based primitive (`get_onu_detail`).
+- The `key` identifier caveat is captured in a single place and insulated behind the resource API surface.
+- Payload shapes remain controller-defined; callers that need stable field names should implement their own
+  normalization layer outside the SDK.

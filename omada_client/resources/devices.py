@@ -190,6 +190,31 @@ class DevicesResource:
         response = self.client.get(self._path(f"/openapi/v1/sites/{site_id}/devices/{device_id}/status"))
         return cast(Dict[str, Any], response)
 
+    def get_onu_detail_by_mac(
+        self,
+        *,
+        site_id: str,
+        olt_mac: str,
+        pon_port: str,
+        onu_mac: str,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        if not hasattr(self.client, "olts"):
+            raise ValueError("client.olts is required to query ONU telemetry")
+        getter = getattr(self.client.olts, "get_onu_detail_by_mac", None)
+        if not callable(getter):
+            raise ValueError("client.olts.get_onu_detail_by_mac is required to query ONU telemetry")
+        return cast(
+            Dict[str, Any],
+            getter(
+                site_id=site_id,
+                olt_mac=olt_mac,
+                pon_port=pon_port,
+                onu_mac=onu_mac,
+                params=params,
+            ),
+        )
+
     @staticmethod
     def _extract_device_items(response: dict[str, Any]) -> List[Any]:
         for key in ("data", "result", "items", "list"):
