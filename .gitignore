@@ -29,7 +29,7 @@ htmlcov/
 .vscode/
 .DS_Store
 
-# Local scratch script
-/test.py
+# Local scratch scripts
+scripts/
 
 uv.lock
