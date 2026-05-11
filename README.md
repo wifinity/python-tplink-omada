@@ -230,6 +230,46 @@ When `status` and `detailStatus` are present on DeviceInfo records, the client a
 `client.aps.start_adopt(...)` and `client.aps.check_adopt(...)` are thin shortcut methods
 that delegate to the canonical `client.devices` adopt operations.
 
+### Switches
+
+Use `client.switches` for switch onboarding workflows:
+
+```python
+# Retrieve all switches in a site (delegates to canonical devices.list with switch filter)
+switches = client.switches.all(site_id="69e8b698f1c4806211fe52af")
+
+# Get switch DeviceInfo by MAC
+switch_device = client.switches.get_by_mac(site_id="69e8b698f1c4806211fe52af", mac="AA-BB-CC-DD-EE-FF")
+
+# Get switch DeviceInfo by switch name
+switch_device_by_name = client.switches.get_by_name(site_id="69e8b698f1c4806211fe52af", name="Core-SW-01")
+
+# Create/register switch in a site (device key onboarding flow)
+created_switch = client.switches.create(
+    site_id="69e8b698f1c4806211fe52af",
+    device_key="ZTP-DEVICE-KEY",
+)
+
+# Start switch adopt by MAC (switch facade shortcut to devices.start_adopt)
+switch_adopt_result = client.switches.start_adopt(
+    site_id="69e8b698f1c4806211fe52af",
+    mac="AA-BB-CC-DD-EE-FF",
+)
+
+# Check switch adopt result by MAC (switch facade shortcut to devices.check_adopt)
+switch_adopt_status = client.switches.check_adopt(
+    site_id="69e8b698f1c4806211fe52af",
+    mac="AA-BB-CC-DD-EE-FF",
+)
+
+# Delete/forget switch by MAC
+forgotten = client.switches.delete(site_id="69e8b698f1c4806211fe52af", mac="AA-BB-CC-DD-EE-FF")
+```
+
+`client.switches` follows the same typed-facade-over-devices pattern as `client.aps`.
+It filters list/lookup calls via `deviceType=\"switch\"` and delegates adopt operations
+to the canonical `client.devices.start_adopt(...)` and `client.devices.check_adopt(...)`.
+
 ### Wireless Network Groups
 
 Use `client.wlan_groups` for WLAN group workflows:
