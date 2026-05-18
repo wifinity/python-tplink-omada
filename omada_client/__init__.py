@@ -9,9 +9,14 @@ from .exceptions import (
     OmadaNotFoundError,
     OmadaPermissionError,
     OmadaValidationError,
+    WiFiNetworkPartiallyConfiguredError,
     WLANGroupNotFoundError,
 )
 from .logging_config import set_log_level
+from .wifi_payload_utils import (
+    ssid_detail_to_basic_config_patch,
+    strip_ssid_detail_for_create,
+)
 
 __all__ = [
     "OmadaClient",
@@ -22,8 +27,9 @@ __all__ = [
     "OmadaNotFoundError",
     "OmadaValidationError",
     "OmadaConnectionError",
+    "WiFiNetworkPartiallyConfiguredError",
     "WLANGroupNotFoundError",
     "set_log_level",
+    "ssid_detail_to_basic_config_patch",
+    "strip_ssid_detail_for_create",
 ]
-
-__version__ = "0.1.0"
