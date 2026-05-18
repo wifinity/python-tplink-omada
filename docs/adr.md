@@ -348,21 +348,18 @@ The SDK previously had only a minimal Wi-Fi resource contract and needed first-c
   - `all(*, site_id, wlan_group, params=None)`
   - `get(*, site_id, wlan_group, id=None, name=None)`
   - `delete(*, site_id, wlan_group, id=None, name=None)`
-  - `create(*, site_id, wlan_group, name, type, ssid, network_data=None, **kwargs)`
+  - `create(...)` (see Decision 18 for `type` mapping, broadcast-name rules, and VLAN shortcuts).
+  - `filter(*, site_id, wlan_group, **criteria)` and `update_basic_config(...)` (Decision 19).
 - Resolve `wlan_group` as id-or-name via `client.wlan_groups.get(...)`.
-- Require exactly one selector (`id` xor `name`) for `get(...)` and `delete(...)`, with exact-name matching.
-- Keep Wi-Fi create ergonomic with string `type` while mapping to Omada numeric `security` values:
-  - `open -> 0`
-  - `aaa -> 2`
-  - `psk -> 3`
-  - `dpsk -> 5` (PPSK with RADIUS)
-- Explicitly do not support `guest` or `hotspot20` in this SDK surface.
+- Require exactly one selector (`id` xor `name`) for `get(...)`, `delete(...)`, and `update_basic_config(...)`, with exact-name matching for name selectors.
+- Keep Wi-Fi create ergonomic with string `type` while mapping to Omada numeric `security` values (Decision 18).
 
 ### Consequences
 - Wi-Fi network operations are now consistent with existing resource patterns (`sites`, `wlan_groups`).
 - SDK behavior matches Omada nesting semantics and avoids ambiguity about WLAN group scope.
 - Create flows remain ergonomic for callers while preserving explicit Omada payload control via overrides.
-- Unsupported legacy Ruckus-only types (`guest`, `hotspot20`) fail fast with actionable errors.
+- Extended create ergonomics and Omada `security` mode coverage are governed by Decision 18.
+- Client-side `filter(...)` and merge-from-GET `update_basic_config(...)` are governed by Decision 19.
 
 ---
 
@@ -443,3 +440,232 @@ address, which makes direct “MAC → optics” workflows awkward for automatio
 - The `key` identifier caveat is captured in a single place and insulated behind the resource API surface.
 - Payload shapes remain controller-defined; callers that need stable field names should implement their own
   normalization layer outside the SDK.
+
+---
+
+## Decision 18 (2026-05): Wi-Fi SSID create — Ruckus-like types, broadcast name, VLAN, clone helper
+
+### Context
+Omada `CreateSsidOpenApiVO` uses numeric `security` (0 none, 2 WPA-Enterprise, 3 WPA-Personal, 4 PPSK without RADIUS,
+5 PPSK with RADIUS). Callers migrating from sibling clients (for example Ruckus One) expect string `type` discriminators,
+optional `name` alongside `ssid`, guest-style open SSIDs, PPSK-without-RADIUS (`security=4`), and VLAN shapes that match
+the controller (`vlanSetting` vs plain `vlanId`). GET SSID detail payloads are a superset of create fields.
+
+### Decision
+- Expand `WiFiNetworksResource.create(...)` keyword-only parameters:
+  - `ssid` and `name` are both optional but **at least one required**; if both are set they must be identical (broadcast SSID string maps to JSON `name`).
+  - `vlan_setting` accepts Omada `vlanSetting` object; mutually exclusive with the integer `vlan` parameter.
+  - `guest_network` applies to `type="open"` only: when `True`/`False`, sets `guestNetEnable`; when omitted, leaves default from payload builder.
+  - `type="open-isolated"` is sugar for open SSID with `guestNetEnable=True` (`security=0`), not Hotspot 2.0 / captive portal parity with Ruckus `hotspot20`.
+  - `type="ppsk_local"` maps to `security=4` and requires both `psk_setting` or `psk` **and** `ppsk_setting`.
+  - `type="dpsk"` remains `security=5` (PPSK with RADIUS) and requires `ppsk_setting`.
+  - `type="hotspot20"` remains unsupported with an explicit error directing callers to future HotspotV2 work or raw HTTP.
+- Export `strip_ssid_detail_for_create` from `omada_client` to trim GET detail dicts to `CreateSsidOpenApiVO` keys before merge/create.
+
+### Consequences
+- Automation can mirror Ruckus-style `create(name=..., type=..., ...)` call sites where `name` is the SSID string.
+- PPSK-without-RADIUS and guest-style open networks are first-class without dumping full payloads for every field.
+- Callers cloning from GET responses should use `strip_ssid_detail_for_create` then override secrets/ids before POST.
+
+---
+
+## Decision 19 (2026-05): Wi-Fi SSID `filter` and `update_basic_config`
+
+### Context
+Sibling clients (for example Ruckus One) document `wifi_networks.filter(...)`, `wifi_networks.update(id, {...})`,
+and a linear list/get/create/delete story. Omada SSIDs remain nested under a site and WLAN group, and updates use
+PATCH `.../ssids/{ssidId}/update-basic-config` with `UpdateSsidBasicConfigOpenApiVO` rather than a single PUT replace.
+
+### Decision
+- Add `WiFiNetworksResource.filter(*, site_id, wlan_group, **criteria)` (keyword-only):
+  - Load SSIDs via existing `all(...)`; apply **client-side** equality filtering on list item top-level keys.
+  - Accept only a **strict allowlist** of criterion names; unknown keys raise `ValueError`.
+  - Treat criterion `ssid=` as an alias for the broadcast string stored in JSON **`name`**.
+  - When criteria are only broadcast-name selectors (`name` and/or matching `ssid`), pass `searchKey` on the list GET
+    for a smaller controller response, then still enforce exact equality client-side.
+- Add `WiFiNetworksResource.update_basic_config(*, site_id, wlan_group, id|name, network_data=None, **kwargs)`:
+  - `get(...)` current detail, project to `UpdateSsidBasicConfigOpenApiVO` keys, merge `network_data` then `kwargs`,
+    validate required basic-config fields, PATCH `update-basic-config`.
+  - Map override key `ssid` to `name` when callers mirror Ruckus `{"ssid": "..."}` payloads.
+- Export pure helper `ssid_detail_to_basic_config_patch` from `omada_client` for the projection + merge + validation
+  step without repeating allowlists at call sites.
+- Do **not** fold other SSID PATCH endpoints (rate limit, schedule, HotspotV2, …) into this method; callers use raw
+  `client.patch` if they need those surfaces.
+
+### Consequences
+- README examples can follow the same narrative order as Ruckus (`all` / `get` / `filter` / `create` / `update` / `delete`)
+  while staying honest about Omada path and merge semantics.
+- Callers must not assume `update_basic_config` is a partial no-merge PATCH; missing required fields after merge raise
+  a clear error pointing to incomplete GET detail or overrides.
+
+---
+
+## Decision 20 (2026-05): Wi-Fi SSID rate control (`update_rate_control`, `rate_control` on create)
+
+### Context
+Omada SSID **create** does not include `rateControl`. Rate settings use PATCH
+`.../ssids/{ssidId}/update-rate-control` with a flat `UpdateSsidRateControlOpenApiVO` body. GET detail nests
+settings under `detail["rateControl"]`. Reference field values are documented in
+`docs/wlan_samples/*.json` (the `rateControl` key there is GET/reference shape, not the PATCH body).
+
+### Decision
+- Add `WiFiNetworksResource.update_rate_control(*, site_id, wlan_group, id|name, rate_control)`:
+  - `rate_control` is **required**; must be a non-empty dict of flat PATCH fields.
+  - Reject nested wrapper key `rateControl` with an actionable error (PATCH body is flat, not GET-shaped).
+- Add optional `rate_control: dict | None = None` on `create(...)`:
+  - When a dict is provided, after POST (and after optional `multicast_config` multicast PATCH when set), resolve
+    `ssidId` and PATCH `update-rate-control` with the same dict.
+  - Valid for all supported `type` values.
+- **Do not** add `build_rate_control_setting()` or export a default rate-control template from `omada_client`;
+  StackStorm packs and other callers own the constant (aligned with `docs/wlan_samples`).
+- Out of scope (Decision 20): rate **limit** profiles (`update-rate-limit`), bool shortcut (`rate_control=True`), merging
+  partial dicts from GET detail.
+
+### Consequences
+- Post-create rate control matches the optional `multicast_config` POST-then-PATCH pattern (Decision 22).
+- README points to `docs/wlan_samples` for field reference; callers must not pass GET-nested `rateControl` wrappers.
+- Pack shims pass `rate_control=RATE_CONTROL` into `create` or call `update_rate_control` on existing SSIDs.
+
+---
+
+## Decision 21 (2026-05): Wi-Fi SSID rate limit profile by name (`update_rate_limit`, `rate_limit_profile_name` on create)
+
+### Context
+GET SSID detail includes `clientRateLimit` and `ssidRateLimit` with a site `profileId` and `customSetting` limits disabled
+(see `docs/wlan_samples`). Create does not set rate limits; Omada uses PATCH `update-rate-limit` with
+`UpdateSsidRateLimitOpenApiVO` (nested `clientRateLimit` / `ssidRateLimit`, unlike flat rate **control** PATCH).
+New SSIDs otherwise only expose `customSetting` without a profile until configured. Callers (StackStorm,
+NetBox-driven automation) know the Omada **profile name** (e.g. `Default`) but not the opaque `profileId`.
+
+### Decision
+- Add `WiFiNetworksResource.update_rate_limit(*, site_id, wlan_group, id|name, rate_limit_profile_name)`:
+  - `rate_limit_profile_name` is **required**; resolved before PATCH via `GET /sites/{siteId}/rate-limit-profiles`,
+    exact match on list item `name`, use `profileId`. **0 matches:** `ValueError`; **>1 matches:** `ValueError`
+    listing conflicting `profileId`s. Mirrors the PPSK/RADIUS name lookup (Decisions 24/25).
+  - PATCH body from `_build_rate_limit_profile_body(profile_id)` (same profile on client and SSID; custom limits off).
+- Add optional `rate_limit_profile_name: str | None = None` on `create(...)`:
+  - When provided, after POST resolve `ssidId` and PATCH `update-rate-limit` (after optional multicast and
+    rate-control PATCHes). When omitted, **no** rate-limit GET or PATCH is performed.
+- No SDK-exported default rate-limit template dict (callers/stackstorm own constants); helper `_build_rate_limit_profile_body` is structural only.
+
+### Consequences
+- Rate-limit is opt-in, consistent with `multicast_config` and `rate_control` (Decisions 20/22): a plain
+  `create()` does only the POST, with no dependency on a site profile named `Default` existing.
+- Callers attach a profile by passing `rate_limit_profile_name="Default"` (or another profile name).
+- Rate **control** (802.11 rates) remains separate from rate **limit** (throughput profiles); Decision 20 unchanged.
+
+---
+
+## Decision 22 (2026-05): Wi-Fi SSID generic multicast (`multicast_config` on create)
+
+### Context
+Omada SSID **create** does not set multicast/broadcast management. Settings use PATCH
+`.../ssids/{ssidId}/update-multicast-config` with flat `UpdateSsidMultiCastOpenApiVO` fields. GET detail nests under
+`detail["multiCast"]`. Guest and secured presets are documented in `docs/wlan_samples` (flat keys for PATCH).
+The SDK previously exposed `guest_multicast_filter=True` and `build_guest_multicast_setting()` for guest-only parity;
+secured SSIDs (for example `ppsk_local`) left `arpCastEnable` false unless callers PATCHed manually.
+
+### Decision
+- Add optional `multicast_config: dict | None = None` on `create(...)`:
+  - When a dict is provided, after POST resolve `ssidId` and PATCH `update-multicast-config` with the flat dict (before
+    optional `rate_control`, then rate limit).
+  - Reject nested wrapper key `multiCast` with an actionable error (PATCH body is flat, not GET-shaped).
+- Require `multicast_config` on `update_multicast_config(...)` (no default guest preset; param name matches `create()`).
+- **Remove** `guest_multicast_filter` from `create()` and **remove** `build_guest_multicast_setting()` from the SDK.
+- **Do not** add SDK multicast preset builders; StackStorm pack and README document `GUEST_MULTICAST` / `SECURED_MULTICAST`
+  dicts aligned with `docs/wlan_samples`.
+
+### Consequences
+- Callers own multicast preset dicts (guest filter + `filterMode` 15; secured `arpCastEnable` with `filterEnable` false).
+- Breaking change for `guest_multicast_filter` and `build_guest_multicast_setting` consumers.
+- `filterMode` is a bitmask (IGMP=1, mDNS=2, Others=4); document in README.
+
+---
+
+## Decision 23 (2026-05): Wi-Fi create type `guest` renamed to `open-isolated`
+
+### Context
+`type="guest"` on `WiFiNetworksResource.create()` mapped to open + `guestNetEnable=True` (client isolation), which
+collided with Omada “guest” terminology and diverged from the cross-vendor wif-services schema (`open-isolated` in
+StackStorm / Ruckus automation).
+
+### Decision
+- Replace supported create type `guest` with `open-isolated` (same Omada payload: `security=0`, default `guestNetEnable=True`).
+- **Do not** accept `type="guest"` as a deprecated alias.
+
+### Consequences
+- Breaking change for callers using `type="guest"`; migrate to `type="open-isolated"`.
+- Aligns Omada SDK string types with wif-services / `create_and_activate_wifi_network` schema naming.
+
+---
+
+## Decision 24 (2026-05): PPSK profile lookup by name on `ppsk_local` create
+
+### Context
+`type="ppsk_local"` create requires a PPSK profile id in `ppskSetting.ppskProfileId`. Callers (StackStorm, NetBox-driven
+automation) know the Omada **profile name** (e.g. `Services_PPSK_Profile`) but not the opaque id.
+
+### Decision
+- Replace `ppsk_profile_id` on `WiFiNetworksResource.create()` with **`ppsk_profile_name`** (breaking; no dual mode).
+- Resolve name before POST: `GET /openapi/v1/sites/{siteId}/ppsk-profiles`, exact match on list item `profileName`, use `id`.
+- **0 matches:** `ValueError` with profile name and site id.
+- **>1 matches:** `ValueError` (defensive).
+- Keep internal `_build_ppsk_local_setting(ppsk_profile_id=...)` unchanged (resolved Omada id).
+
+### Consequences
+- Corporate/resident automation passes human-readable profile names aligned with Omada UI.
+- Extra GET on every `ppsk_local` create that uses `ppsk_profile_name`.
+- Callers using `ppsk_profile_id` must migrate to `ppsk_profile_name`.
+
+---
+
+## Decision 25 (2026-05): RADIUS profile lookup by name on `dpsk` create
+
+### Context
+`type="dpsk"` create requires a RADIUS profile id in `ppskSetting.radiusProfileId`. Callers (StackStorm, NetBox-driven
+automation) know the Omada **profile name** (e.g. `Home Networking Wi-Fi`) but not the opaque id. Decision 24 left RADIUS
+lookup out of scope.
+
+### Decision
+- Replace `radius_profile_id` on `WiFiNetworksResource.create()` with **`radius_profile_name`** (breaking; no dual mode).
+- Resolve name before POST: `GET /openapi/v1/sites/{siteId}/profiles/radius`, exact match on list item `name`, use
+  `radiusProfileId`.
+- **0 matches:** `ValueError` with profile name and site id.
+- **>1 matches:** `ValueError` listing conflicting `radiusProfileId`s.
+- `nas_id` remains required when `radius_profile_name` is set.
+- Keep internal `_build_dpsk_radius_setting(radius_profile_id=...)` unchanged (resolved Omada id).
+
+### Consequences
+- Resident automation passes human-readable RADIUS profile names aligned with Omada UI.
+- Extra GET on every `dpsk` create that uses `radius_profile_name`.
+- Callers using `radius_profile_id` must migrate to `radius_profile_name`.
+
+---
+
+## Decision 26 (2026-05): Wi-Fi SSID `create` post-create PATCH failures raise `WiFiNetworkPartiallyConfiguredError`
+
+### Context
+`create()` is not atomic: it POSTs the SSID, then performs up to three optional PATCHes
+(`update-multicast-config`, `update-rate-control`, `update-rate-limit`; Decisions 20/21/22). If a PATCH
+fails after a successful POST, the SSID already exists on the controller. Previously the underlying
+exception propagated as-is, discarding the created `ssidId` — callers could not tell the SSID had been
+created, retry the failed step, or delete it without a name lookup.
+
+### Decision
+- Add exception `WiFiNetworkPartiallyConfiguredError(OmadaAPIError)` carrying `ssid_id`, `failed_step`
+  (`update-multicast-config` / `update-rate-control` / `update-rate-limit`), and `completed_steps`.
+- In `create()`, wrap the post-create PATCH block: on any failure after the POST, raise
+  `WiFiNetworkPartiallyConfiguredError` with the created `ssid_id` and the failed/completed steps; the
+  original error (HTTP `OmadaAPIError` or a `ValueError` from a profile-name lookup) is preserved as `__cause__`.
+- Validate `multicast_config` / `rate_control` shape and `rate_limit_profile_name` non-emptiness **before**
+  the POST: a malformed input raises `ValueError` without creating an SSID (a usage error, not a partial
+  configuration). Only failures after a successful POST become `WiFiNetworkPartiallyConfiguredError`.
+- POST failures are unchanged (no SSID created, the underlying error propagates directly).
+- Export the exception from `omada_client`.
+
+### Consequences
+- `create()` callers can catch `WiFiNetworkPartiallyConfiguredError` to retry the failed step or delete the
+  partially configured SSID by `ssid_id`, instead of losing the id behind an opaque error.
+- It subclasses `OmadaAPIError`, so existing broad `except OmadaAPIError` handlers still catch it.
+- A successful `create()` return value is unchanged (raw POST response); surfacing `ssidId` on success is
+  out of scope here.

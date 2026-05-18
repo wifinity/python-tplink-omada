@@ -305,55 +305,220 @@ unless explicitly overridden in `group_data`.
 
 ### Wi-Fi Networks
 
-Use `client.wifi_networks` for SSID workflows scoped to a site and WLAN group:
+Use `client.wifi_networks` for SSID workflows scoped to a site and WLAN group. Omada always requires **`site_id`** and **`wlan_group`** (WLAN group id or name); there is no controller-wide SSID list.
+
+**Order: list → get → filter → create → update → delete:**
 
 ```python
-# List SSIDs under a WLAN group (wlan_group may be group id or name)
-wifi_networks = client.wifi_networks.all(
-    site_id="69e8b698f1c4806211fe52af",
-    wlan_group="Corp",
-)
+from omada_client import strip_ssid_detail_for_create
 
-# Get SSID by name under the WLAN group
-wifi_network = client.wifi_networks.get(
-    site_id="69e8b698f1c4806211fe52af",
-    wlan_group="Corp",
-    name="GuestSSID",
-)
+site_id = "69e8b698f1c4806211fe52af"
+wlan_group = "Corp"
 
-# Delete SSID by name under the WLAN group
-delete_result = client.wifi_networks.delete(
-    site_id="69e8b698f1c4806211fe52af",
-    wlan_group="Corp",
-    name="GuestSSID",
-)
+# List SSIDs under the WLAN group
+wifi_networks = client.wifi_networks.all(site_id=site_id, wlan_group=wlan_group)
 
-# Create SSID (name and ssid must match for Omada create contract)
-created_wifi_network = client.wifi_networks.create(
-    site_id="69e8b698f1c4806211fe52af",
-    wlan_group="Corp",
-    ssid="GuestSSID",
+# Get one SSID by id or by exact broadcast name (JSON field `name`)
+wifi_network = client.wifi_networks.get(site_id=site_id, wlan_group=wlan_group, name="GuestSSID")
+
+# Filter list items (client-side); use `ssid=` as an alias for broadcast `name`
+filtered = client.wifi_networks.filter(site_id=site_id, wlan_group=wlan_group, ssid="Guest")
+
+# Create (see expanded examples below for security types)
+created = client.wifi_networks.create(
+    site_id=site_id,
+    wlan_group=wlan_group,
     type="psk",
+    name="GuestSSID",
     psk="StrongPassphrase123!",
 )
 
-# DPSK maps to PPSK with RADIUS (security=5)
-created_dpsk_network = client.wifi_networks.create(
-    site_id="69e8b698f1c4806211fe52af",
-    wlan_group="Corp",
-    ssid="StaffSSID",
-    type="dpsk",
-    ppsk_setting={"radiusId": "radius-profile-id"},
+# Update basic SSID fields: merges GET detail with `network_data` / kwargs, then PATCHes
+# `.../update-basic-config` (Omada has no `PUT .../ssids/{id}`)
+client.wifi_networks.update_basic_config(
+    site_id=site_id,
+    wlan_group=wlan_group,
+    id="existing-ssid-id",
+    network_data={"ssid": "UpdatedSSID"},  # `ssid` is an alias for Omada `name`
+)
+
+# Delete by id or name (Omada has no `deep=` delete flag)
+delete_result = client.wifi_networks.delete(
+    site_id=site_id,
+    wlan_group=wlan_group,
+    name="UpdatedSSID",
 )
 ```
 
-Supported `type` values are:
-- `open` (maps to `security=0`)
-- `aaa` (maps to `security=2`; requires `ent_setting`)
-- `psk` (maps to `security=3`; requires `psk` or `psk_setting`)
-- `dpsk` (maps to `security=5`; requires `ppsk_setting`)
+`filter(...)` only accepts documented criterion keys (unknown keys raise `ValueError`). When criteria are only broadcast-name selectors (`name` and/or matching `ssid`), the list call uses `searchKey` for a smaller response, then applies exact equality client-side.
 
-`name` is intentionally not accepted on create; set `ssid` only.
+`update_basic_config(...)` loads the current SSID detail, projects it to `UpdateSsidBasicConfigOpenApiVO`, merges overrides, and PATCHes. Use package helper `ssid_detail_to_basic_config_patch` if you build PATCH bodies yourself. Other SSID PATCH routes (rate limit, schedule, …) are not covered by this method.
+
+Further examples (security types, VLAN, cloning):
+
+```python
+from omada_client import strip_ssid_detail_for_create
+
+# Create WPA-Personal (pass name= or ssid= as the broadcast SSID; at least one required)
+created_wifi_network = client.wifi_networks.create(
+    site_id="69e8b698f1c4806211fe52af",
+    wlan_group="Corp",
+    type="psk",
+    name="GuestSSID",
+    psk="StrongPassphrase123!",
+)
+
+# PPSK with RADIUS (security=5) — profile IDs as parameters (vlan= builds vlanSetting pool shape)
+created_dpsk_network = client.wifi_networks.create(
+    site_id="69e8b698f1c4806211fe52af",
+    wlan_group="Corp",
+    type="dpsk",
+    ssid="Resident",
+    vlan=999,
+    radius_profile_name="Home Networking Wi-Fi",
+    nas_id="SITECODE",
+)
+
+# PPSK without RADIUS (security=4); pmf_mode defaults to 3 for ppsk_local/dpsk
+created_ppsk_local = client.wifi_networks.create(
+    site_id="69e8b698f1c4806211fe52af",
+    wlan_group="Corp",
+    type="ppsk_local",
+    ssid="Corporate",
+    vlan=999,
+    ppsk_profile_name="Services_PPSK_Profile",
+)
+
+# Multicast: flat PATCH fields (not nested under multiCast). Presets from docs/wlan_samples.
+# filterMode bitmask: IGMP=1, mDNS=2, Others=4 (guest/signup samples use 15).
+GUEST_MULTICAST = {
+    "multiCastEnable": True,
+    "ipv6CastEnable": True,
+    "channelUtil": 100,
+    "arpCastEnable": True,
+    "filterEnable": True,
+    "filterMode": 15,
+}
+SECURED_MULTICAST = {
+    "multiCastEnable": True,
+    "ipv6CastEnable": True,
+    "channelUtil": 100,
+    "arpCastEnable": True,
+    "filterEnable": False,
+}
+
+# Open isolated (type=open-isolated sets guestNetEnable; vlan= builds standard vlan pool setting)
+created_open_isolated = client.wifi_networks.create(
+    site_id="69e8b698f1c4806211fe52af",
+    wlan_group="Corp",
+    type="open-isolated",
+    ssid="Guest",
+    vlan=98,
+    multicast_config=GUEST_MULTICAST,
+    # Rate-limit is opt-in: pass rate_limit_profile_name to attach a site profile by name:
+    # rate_limit_profile_name="Default",
+)
+
+# PPSK / DPSK with secured multicast (wpa.json / dpsk_radius.json parity)
+created_ppsk_with_multicast = client.wifi_networks.create(
+    site_id="69e8b698f1c4806211fe52af",
+    wlan_group="Corp",
+    type="ppsk_local",
+    ssid="Corporate",
+    vlan=999,
+    ppsk_profile_name="Services_PPSK_Profile",
+    multicast_config=SECURED_MULTICAST,
+)
+
+# Rate control: caller supplies flat PATCH fields (not nested under rateControl).
+# Field reference: docs/wlan_samples/*.json (rateControl key in samples is GET shape only).
+RATE_CONTROL = {
+    "rate2gCtrlEnable": True,
+    "lowerDensity2g": 12,
+    "higherDensity2g": 54,
+    "rate5gCtrlEnable": True,
+    "lowerDensity5g": 12,
+    "higherDensity5g": 54,
+}
+created_open_isolated_with_rate = client.wifi_networks.create(
+    site_id="69e8b698f1c4806211fe52af",
+    wlan_group="Corp",
+    type="open-isolated",
+    ssid="Guest",
+    vlan=98,
+    multicast_config=GUEST_MULTICAST,
+    rate_control=RATE_CONTROL,
+    rate_limit_profile_name="Default",  # POST then opt-in PATCHes: multicast, rate-control, rate-limit
+)
+
+# Standalone multicast PATCH on an existing SSID
+client.wifi_networks.update_multicast_config(
+    site_id="69e8b698f1c4806211fe52af",
+    wlan_group="Corp",
+    name="Guest",
+    multicast_config=GUEST_MULTICAST,
+)
+
+# Standalone rate-control PATCH on an existing SSID
+client.wifi_networks.update_rate_control(
+    site_id="69e8b698f1c4806211fe52af",
+    wlan_group="Corp",
+    name="Guest",
+    rate_control=RATE_CONTROL,
+)
+
+# Standalone rate-limit profile attachment (resolves the named site profile)
+client.wifi_networks.update_rate_limit(
+    site_id="69e8b698f1c4806211fe52af",
+    wlan_group="Corp",
+    name="Guest",
+    rate_limit_profile_name="Default",  # exact Omada rate-limit profile name
+)
+
+# Omada vlanSetting (mutually exclusive with vlan= integer shortcut)
+created_vlan_setting = client.wifi_networks.create(
+    site_id="69e8b698f1c4806211fe52af",
+    wlan_group="Corp",
+    type="open",
+    ssid="Signup",
+    vlan_setting={
+        "mode": 1,
+        "customConfig": {"customMode": 1, "vlanPoolIds": "99"},
+    },
+)
+
+# Clone from GET detail: strip read-only keys; match `type` to `security` in the trimmed payload
+detail = client.wifi_networks.get(
+    site_id="69e8b698f1c4806211fe52af",
+    wlan_group="Corp",
+    id="existing-ssid-id",
+)
+base = strip_ssid_detail_for_create(detail)
+base.pop("name", None)  # broadcast name comes from create(ssid=...)
+client.wifi_networks.create(
+    site_id="69e8b698f1c4806211fe52af",
+    wlan_group="Corp",
+    type="psk",
+    ssid="ClonedSSID",
+    psk="NewPassphrase",
+    network_data=base,
+)
+```
+
+Supported `type` values (string `type` maps to Omada `security`):
+
+- `open` (`security=0`; optional `guest_network=True/False` for `guestNetEnable`)
+- `open-isolated` (`security=0`, `guestNetEnable=True`; open SSID with client isolation; wif-services schema name)
+- `aaa` (`security=2`; requires `ent_setting`)
+- `psk` (`security=3`; requires `psk` or `psk_setting`)
+- `ppsk_local` (`security=4`; requires `psk` or `psk_setting` **and** `ppsk_setting`)
+- `dpsk` (`security=5`; requires `ppsk_setting`, PPSK with RADIUS)
+
+`hotspot20` is not supported in the SDK (raise a clear error); use raw `client.get`/`post` if you must drive HotspotV2 APIs.
+
+`network_data` must not include `name`; set the broadcast SSID via `ssid` and/or `name`.
+
+`create()` is not atomic: it POSTs the SSID, then runs the opt-in `multicast_config` / `rate_control` / `rate_limit_profile_name` PATCHes. If a PATCH fails after the POST, `create()` raises `WiFiNetworkPartiallyConfiguredError` — the SSID already exists, and the exception carries `ssid_id`, `failed_step`, and `completed_steps` so you can retry the failed step or delete the SSID.
 
 ### Devices
 
