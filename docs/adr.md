@@ -669,3 +669,27 @@ created, retry the failed step, or delete it without a name lookup.
 - It subclasses `OmadaAPIError`, so existing broad `except OmadaAPIError` handlers still catch it.
 - A successful `create()` return value is unchanged (raw POST response); surfacing `ssidId` on success is
   out of scope here.
+
+---
+
+## Decision 27 (2026-05): Distinct SDK types `psk` vs `ppsk_local`
+
+### Context
+Omada uses different `security` codes for WPA-Personal (shared passphrase, `security=3`) and corporate PPSK
+(`security=4`, `ppskSetting`). Reference samples [`wpa_basic.json`](wlan_samples/wpa_basic.json) and
+[`wpa.json`](wlan_samples/wpa.json) must map to different `WiFiNetworksResource.create()` types. The filename
+`wpa.json` refers to PPSK, not WPA-Personal. wif-services `dpsk-local-auth` is a separate automation concept
+and is not an alias for `ppsk_local`.
+
+### Decision
+- Public types remain **`psk`** (WPA-Personal) and **`ppsk_local`** (corporate PPSK).
+- Accept type alias **`ppsk-local`** → `ppsk_local` in `_normalize_network_type()`.
+- Validate auth kwargs by type: `psk=` only for `type='psk'`; `ppsk_profile_name` / `ppsk_setting` only for
+  `ppsk_local` / `dpsk`; reject cross-type combinations with explicit errors.
+- Document parity in `docs/st2_wlan_creation.md` (sections 3 and 5); tplink_omada pack maps `wpa` → `psk` only;
+  `ppsk_local` is SDK-ready for future pack/workflow use.
+
+### Consequences
+- Callers must not pass `ppsk_profile_name` when creating WPA-Personal SSIDs.
+- WPA-Personal parity with `wpa_basic.json` uses SDK default `pmfMode=3` for `type='psk'` (breaking vs earlier
+  default `2`; pass `pmf_mode=2` for PMF capable). `WPA_PSK_RATE_CONTROL` still required for rate-control parity.

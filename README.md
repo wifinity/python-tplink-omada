@@ -359,14 +359,19 @@ Further examples (security types, VLAN, cloning):
 ```python
 from omada_client import strip_ssid_detail_for_create
 
-# Create WPA-Personal (pass name= or ssid= as the broadcast SSID; at least one required)
+# WPA-Personal (security=3) — shared passphrase; see docs/wlan_samples/wpa_basic.json
 created_wifi_network = client.wifi_networks.create(
     site_id="69e8b698f1c4806211fe52af",
     wlan_group="Corp",
     type="psk",
     name="GuestSSID",
     psk="StrongPassphrase123!",
+    vlan=102,
+    # pmf_mode defaults to 3 for psk (wpa_basic.json); pass pmf_mode=2 for PMF capable
 )
+
+# Corporate PPSK (security=4) — profile-based; see docs/wlan_samples/wpa.json (not WPA-Personal)
+# Alias type="ppsk-local" is accepted.
 
 # PPSK with RADIUS (security=5) — profile IDs as parameters (vlan= builds vlanSetting pool shape)
 created_dpsk_network = client.wifi_networks.create(

@@ -16,6 +16,11 @@ from omada_client.wifi_payload_utils import (
 
 _SUPPORTED_WIFI_TYPES = ("open", "open-isolated", "aaa", "psk", "dpsk", "ppsk_local")
 
+# Public type aliases normalized before validation (canonical keys in _TYPE_TO_SECURITY).
+_NETWORK_TYPE_ALIASES: dict[str, str] = {
+    "ppsk-local": "ppsk_local",
+}
+
 # Top-level list item keys accepted by ``filter`` (strict); ``ssid`` matches JSON ``name``.
 _FILTER_CRITERIA_KEYS: frozenset[str] = frozenset(
     {
@@ -56,7 +61,7 @@ _DEFAULT_PMF_MODE_BY_TYPE: dict[str, int] = {
     "open": 2,
     "open-isolated": 2,
     "aaa": 2,
-    "psk": 2,
+    "psk": 3,
     "ppsk_local": 3,
     "dpsk": 3,
 }
@@ -277,7 +282,7 @@ class WiFiNetworksResource:
         network_type = raw_type.strip().lower() if isinstance(raw_type, str) else raw_type
         if not isinstance(network_type, str) or not network_type:
             raise ValueError("type must be a non-empty string")
-        return network_type
+        return _NETWORK_TYPE_ALIASES.get(network_type, network_type)
 
     @staticmethod
     def _resolve_broadcast_name(*, ssid: str | None, name: str | None) -> str:
@@ -368,6 +373,24 @@ class WiFiNetworksResource:
             payload["entSetting"] = dict(ent_setting)
 
     @staticmethod
+    def _validate_type_param_compatibility(*, network_type: str, kwargs: dict[str, Any]) -> None:
+        """Reject auth kwargs that do not match the requested Wi-Fi type."""
+        if "psk" in kwargs and network_type != "psk":
+            raise ValueError(
+                f"psk is only valid for type='psk' (WPA-Personal); got type={network_type!r}. "
+                "Corporate PPSK uses type='ppsk_local' with ppsk_profile_name=."
+            )
+        if "psk_setting" in kwargs and network_type not in ("psk", "ppsk_local"):
+            raise ValueError(
+                f"psk_setting is only valid for type='psk' or type='ppsk_local'; got type={network_type!r}"
+            )
+        if "ppsk_setting" in kwargs and network_type not in ("ppsk_local", "dpsk"):
+            raise ValueError(
+                f"ppsk_setting is only valid for type='ppsk_local' or type='dpsk'; got type={network_type!r}. "
+                "WPA-Personal uses type='psk' with psk=."
+            )
+
+    @staticmethod
     def _validate_profile_id_params(
         *,
         network_type: str,
@@ -376,7 +399,10 @@ class WiFiNetworksResource:
         nas_id: str | None,
     ) -> None:
         if ppsk_profile_name is not None and network_type != "ppsk_local":
-            raise ValueError("ppsk_profile_name is only valid for type='ppsk_local'")
+            raise ValueError(
+                "ppsk_profile_name is only valid for type='ppsk_local' "
+                "(WPA-Personal / shared passphrase uses type='psk' with psk=)"
+            )
         if radius_profile_name is not None and network_type != "dpsk":
             raise ValueError("radius_profile_name is only valid for type='dpsk'")
         if radius_profile_name is not None and nas_id is None:
@@ -919,6 +945,15 @@ class WiFiNetworksResource:
             rate_limit_profile_name=rate_limit_profile_name,
         )
 
+        kw = dict(kwargs)
+        self._validate_type_param_compatibility(network_type=network_type, kwargs=kw)
+        self._validate_profile_id_params(
+            network_type=network_type,
+            ppsk_profile_name=ppsk_profile_name,
+            radius_profile_name=radius_profile_name,
+            nas_id=nas_id,
+        )
+
         wlan_id = self._resolve_wlan_group_id(site_id=site_id, wlan_group=wlan_group)
         payload = self._build_default_create_payload(
             broadcast_name=broadcast,
@@ -927,7 +962,6 @@ class WiFiNetworksResource:
         )
         self._apply_open_guest_flag(payload=payload, network_type=network_type, guest_network=guest_network)
 
-        kw = dict(kwargs)
         if vlan_setting is not None:
             if not isinstance(vlan_setting, dict):
                 raise ValueError("vlan_setting must be a dict when provided")
