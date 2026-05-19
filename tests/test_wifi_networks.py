@@ -299,6 +299,67 @@ def test_wifi_create_psk_builds_payload_and_overrides() -> None:
     assert psk_setting["versionPsk"] == 2
     assert psk_setting["encryptionPsk"] == 3
     assert psk_setting["gikRekeyPskEnable"] is False
+    assert "ppskSetting" not in sent
+
+
+def test_wifi_create_psk_rejects_ppsk_profile_name() -> None:
+    client = DummyClient()
+    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    resource = WiFiNetworksResource(client)
+
+    with pytest.raises(ValueError, match="ppsk_profile_name is only valid for type='ppsk_local'"):
+        resource.create(
+            site_id="s1",
+            wlan_group="w1",
+            type="psk",
+            ssid="WPA",
+            psk="secret",
+            ppsk_profile_name="Services_PPSK_Profile",
+        )
+
+
+def test_wifi_create_open_rejects_psk_kwarg() -> None:
+    client = DummyClient()
+    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    resource = WiFiNetworksResource(client)
+
+    with pytest.raises(ValueError, match="psk is only valid for type='psk'"):
+        resource.create(site_id="s1", wlan_group="w1", type="open-isolated", ssid="G", psk="x")
+
+
+def test_wifi_create_psk_rejects_ppsk_setting() -> None:
+    client = DummyClient()
+    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    resource = WiFiNetworksResource(client)
+
+    with pytest.raises(ValueError, match="ppsk_setting is only valid"):
+        resource.create(
+            site_id="s1",
+            wlan_group="w1",
+            type="psk",
+            ssid="WPA",
+            psk="secret",
+            ppsk_setting={"ppskProfileId": "p1"},
+        )
+
+
+def test_wifi_create_ppsk_local_hyphen_alias() -> None:
+    client = DummyClient()
+    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ppsk_local_create(client)
+    resource = WiFiNetworksResource(client)
+
+    resource.create(
+        site_id="s1",
+        wlan_group="w1",
+        type="ppsk-local",
+        ssid="Corporate",
+        vlan=999,
+        ppsk_profile_name="Services_PPSK_Profile",
+    )
+
+    sent = cast(Dict[str, object], client.post_calls[0][1])
+    assert sent["security"] == 4
 
 
 def test_wifi_create_dpsk_maps_to_security_five() -> None:
@@ -916,6 +977,24 @@ def test_wifi_create_partial_failure_raises_with_ssid_id() -> None:
     assert client.patch_calls[0][0].endswith("/update-multicast-config")
 
 
+def test_wifi_create_psk_default_pmf_mode() -> None:
+    client = DummyClient()
+    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_post_create(client)
+    resource = WiFiNetworksResource(client)
+
+    resource.create(
+        site_id="s1",
+        wlan_group="w1",
+        type="psk",
+        ssid="WPA",
+        psk="secret-pass",
+    )
+
+    sent = cast(Dict[str, object], client.post_calls[0][1])
+    assert sent["pmfMode"] == 3
+
+
 def test_wifi_create_open_isolated_default_pmf_mode() -> None:
     client = DummyClient()
     _wire_wlan_group(client, group_id="w1", group_name="Corp")
@@ -971,7 +1050,7 @@ def test_wifi_create_ppsk_local_security_four_both_settings() -> None:
         wlan_group="w1",
         type="ppsk_local",
         ssid="Corp",
-        psk="secret",
+        psk_setting={"versionPsk": 2, "encryptionPsk": 3, "gikRekeyPskEnable": False},
         ppsk_setting={"ppskProfileId": "prof1", "macFormat": 2, "type": 0},
     )
 
@@ -1013,7 +1092,7 @@ def test_wifi_create_requires_type_specific_settings() -> None:
             ppsk_setting={"ppskProfileId": "p"},
         )
 
-    with pytest.raises(ValueError, match="type='ppsk_local' requires ppsk_setting"):
+    with pytest.raises(ValueError, match="psk is only valid for type='psk'"):
         resource.create(site_id="s1", wlan_group="w1", type="ppsk_local", ssid="A", psk="x")
 
 
