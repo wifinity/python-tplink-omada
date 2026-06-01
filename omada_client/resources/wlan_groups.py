@@ -48,6 +48,12 @@ class WLANGroupsResource:
             raise ValueError(f"Multiple WLAN groups found with name '{name}'")
         return exact_matches[0]
 
+    def _resolve_by_id(self, *, site_id: str, wlan_id: str) -> dict[str, Any]:
+        for group in self.all(site_id=site_id):
+            if self._extract_wlan_group_id(group) == wlan_id:
+                return group
+        raise WLANGroupNotFoundError(f"WLAN group with id '{wlan_id}' was not found")
+
     def all(self, *, site_id: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         response = self.client.get(
             self._path(f"/openapi/v1/sites/{site_id}/wireless-network/wlans"),
@@ -78,12 +84,7 @@ class WLANGroupsResource:
         if (id is None) == (name is None):
             raise ValueError("Provide exactly one of 'id' or 'name'")
         if id is not None:
-            response = self.client.get(self._path(f"/openapi/v1/sites/{site_id}/wireless-network/wlans/{id}"))
-            payload = cast(Dict[str, Any], response)
-            result = payload.get("result")
-            if isinstance(result, dict):
-                return result
-            return payload
+            return self._resolve_by_id(site_id=site_id, wlan_id=id)
         return self._resolve_by_name(site_id=site_id, name=cast(str, name))
 
     def delete(self, *, site_id: str, id: str | None = None, name: str | None = None) -> dict[str, Any]:

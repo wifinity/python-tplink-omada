@@ -168,7 +168,8 @@ ap_overview = client.aps.get_overview_by_mac(
     site_id="your-site-id",
     mac="AA-BB-CC-DD-EE-FF",
 )
-# ap_overview["result"]["wlanGroupName"] is added when wlanId can be resolved.
+# ap_overview["result"]["wlanGroupName"] is added when wlanId can be resolved via wlan_groups.get
+# (id lookup scans the WLAN group list; there is no per-group GET by wlan group id).
 
 # Switch AP WLAN group by group id or exact group name
 switch_result = client.aps.set_wlan_group_by_mac(

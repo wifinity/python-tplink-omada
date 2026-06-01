@@ -110,16 +110,25 @@ def test_create_wlan_group_requires_name_from_name_or_group_data() -> None:
         resource.create(site_id="s1", group_data={"foo": "bar"})
 
 
-def test_get_wlan_group_by_id_uses_group_endpoint() -> None:
+def test_get_wlan_group_by_id_resolves_from_list() -> None:
     client = DummyClient()
-    client.get_response = {"result": {"wlanId": "w1", "name": "Default"}}
+    client.get_response = {"result": {"data": [{"wlanId": "w1", "name": "Default"}]}}
     resource = WLANGroupsResource(client)
 
     result = resource.get(site_id="s1", id="w1")
 
     assert result == {"wlanId": "w1", "name": "Default"}
-    assert client.last_path == "/openapi/v1/sites/s1/wireless-network/wlans/w1"
+    assert client.last_path == "/openapi/v1/sites/s1/wireless-network/wlans"
     assert client.last_params is None
+
+
+def test_get_wlan_group_by_id_raises_when_not_in_list() -> None:
+    client = DummyClient()
+    client.get_response = {"result": {"data": [{"wlanId": "w2", "name": "Guest"}]}}
+    resource = WLANGroupsResource(client)
+
+    with pytest.raises(WLANGroupNotFoundError, match="WLAN group with id 'w1' was not found"):
+        resource.get(site_id="s1", id="w1")
 
 
 def test_get_wlan_group_by_name_uses_list_search_and_exact_match() -> None:
@@ -226,16 +235,14 @@ def test_delete_wlan_group_by_name_raises_when_wlan_id_missing() -> None:
 
 class OmadacPathDummyClient(DummyClient):
     def api_path(self, path: str) -> str:
-        return path.replace("/openapi/v1/", "/openapi/v1/omadac-1/")
+        path = path.replace("/openapi/v1/", "/openapi/v1/omadac-1/")
+        return path.replace("/openapi/v2/", "/openapi/v2/omadac-1/")
 
 
 def test_wlan_group_methods_use_api_path_rewrite() -> None:
     client = OmadacPathDummyClient()
-    client.get_responses = [
-        {"result": {"data": [{"wlanId": "w1", "name": "Default"}]}},
-        {"result": {"data": [{"wlanId": "w1", "name": "Default"}]}},
-    ]
-    client.get_response = {"result": {"wlanId": "w1", "name": "Default"}}
+    list_payload = {"result": {"data": [{"wlanId": "w1", "name": "Default"}]}}
+    client.get_responses = [list_payload, list_payload, list_payload]
     resource = WLANGroupsResource(client)
 
     resource.all(site_id="s1")
@@ -251,7 +258,7 @@ def test_wlan_group_methods_use_api_path_rewrite() -> None:
     )
 
     resource.get(site_id="s1", id="w1")
-    assert client.last_path == "/openapi/v1/omadac-1/sites/s1/wireless-network/wlans/w1"
+    assert client.last_path == "/openapi/v1/omadac-1/sites/s1/wireless-network/wlans"
 
     resource.delete(site_id="s1", id="w1")
     assert client.delete_calls[0] == "/openapi/v1/omadac-1/sites/s1/wireless-network/wlans/w1"

@@ -101,13 +101,16 @@ class OmadaClient:
         return self._request_with_retry("DELETE", path, json=json)
 
     def api_path(self, path: str) -> str:
-        if not path.startswith("/openapi/v1/"):
-            return path
-        prefix = f"/openapi/v1/{self.omadac_id}/"
-        if path.startswith(prefix):
-            return path
-        suffix = path[len("/openapi/v1/") :]
-        return f"{prefix}{suffix}"
+        for version in ("v1", "v2"):
+            prefix = f"/openapi/{version}/"
+            if not path.startswith(prefix):
+                continue
+            omadac_prefix = f"/openapi/{version}/{self.omadac_id}/"
+            if path.startswith(omadac_prefix):
+                return path
+            suffix = path[len(prefix) :]
+            return f"{omadac_prefix}{suffix}"
+        return path
 
     def _request_with_retry(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
         attempts = self.max_retries + 1 if self.enable_retry else 1
