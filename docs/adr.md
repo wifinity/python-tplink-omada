@@ -506,7 +506,7 @@ PATCH `.../ssids/{ssidId}/update-basic-config` with `UpdateSsidBasicConfigOpenAp
 Omada SSID **create** does not include `rateControl`. Rate settings use PATCH
 `.../ssids/{ssidId}/update-rate-control` with a flat `UpdateSsidRateControlOpenApiVO` body. GET detail nests
 settings under `detail["rateControl"]`. Reference field values are documented in
-`caller-owned WLAN samples/*.json` (the `rateControl` key there is GET/reference shape, not the PATCH body).
+the `rateControl` key in GET detail is not the PATCH body.
 
 ### Decision
 - Add `WiFiNetworksResource.update_rate_control(*, site_id, wlan_group, id|name, rate_control)`:
@@ -517,13 +517,13 @@ settings under `detail["rateControl"]`. Reference field values are documented in
     `ssidId` and PATCH `update-rate-control` with the same dict.
   - Valid for all supported `type` values.
 - **Do not** add `build_rate_control_setting()` or export a default rate-control template from `omada_client`;
-  orchestration packs and other callers own the constant (aligned with `caller-owned WLAN samples`).
+  orchestration packs and other callers own the constant.
 - Out of scope (Decision 20): rate **limit** profiles (`update-rate-limit`), bool shortcut (`rate_control=True`), merging
   partial dicts from GET detail.
 
 ### Consequences
 - Post-create rate control matches the optional `multicast_config` POST-then-PATCH pattern (Decision 22).
-- README points to `caller-owned WLAN samples` for field reference; callers must not pass GET-nested `rateControl` wrappers.
+- Callers must not pass GET-nested `rateControl` wrappers; the PATCH body is flat.
 - Pack shims pass `rate_control=RATE_CONTROL` into `create` or call `update_rate_control` on existing SSIDs.
 
 ---
@@ -532,7 +532,7 @@ settings under `detail["rateControl"]`. Reference field values are documented in
 
 ### Context
 GET SSID detail includes `clientRateLimit` and `ssidRateLimit` with a site `profileId` and `customSetting` limits disabled
-(see `caller-owned WLAN samples`). Create does not set rate limits; Omada uses PATCH `update-rate-limit` with
+Create does not set rate limits; Omada uses PATCH `update-rate-limit` with
 `UpdateSsidRateLimitOpenApiVO` (nested `clientRateLimit` / `ssidRateLimit`, unlike flat rate **control** PATCH).
 New SSIDs otherwise only expose `customSetting` without a profile until configured. Callers (orchestration,
 inventory-driven automation) know the Omada **profile name** (e.g. `Default`) but not the opaque `profileId`.
@@ -561,7 +561,7 @@ inventory-driven automation) know the Omada **profile name** (e.g. `Default`) bu
 ### Context
 Omada SSID **create** does not set multicast/broadcast management. Settings use PATCH
 `.../ssids/{ssidId}/update-multicast-config` with flat `UpdateSsidMultiCastOpenApiVO` fields. GET detail nests under
-`detail["multiCast"]`. Guest and secured presets are documented in `caller-owned WLAN samples` (flat keys for PATCH).
+`detail["multiCast"]`. Guest and secured presets are caller-owned flat dicts for PATCH.
 The SDK previously exposed `guest_multicast_filter=True` and `build_guest_multicast_setting()` for guest-only parity;
 secured SSIDs (for example `ppsk_local`) left `arpCastEnable` false unless callers PATCHed manually.
 
@@ -573,7 +573,7 @@ secured SSIDs (for example `ppsk_local`) left `arpCastEnable` false unless calle
 - Require `multicast_config` on `update_multicast_config(...)` (no default guest preset; param name matches `create()`).
 - **Remove** `guest_multicast_filter` from `create()` and **remove** `build_guest_multicast_setting()` from the SDK.
 - **Do not** add SDK multicast preset builders; orchestration pack and README document `GUEST_MULTICAST` / `SECURED_MULTICAST`
-  dicts aligned with `caller-owned WLAN samples`.
+  dicts.
 
 ### Consequences
 - Callers own multicast preset dicts (guest filter + `filterMode` 15; secured `arpCastEnable` with `filterEnable` false).
@@ -676,9 +676,7 @@ created, retry the failed step, or delete it without a name lookup.
 
 ### Context
 Omada uses different `security` codes for WPA-Personal (shared passphrase, `security=3`) and corporate PPSK
-(`security=4`, `ppskSetting`). Reference samples [`wpa_basic.json`](caller-owned-samples/wpa_basic.json) and
-[`wpa.json`](caller-owned-samples/wpa.json) must map to different `WiFiNetworksResource.create()` types. The filename
-`wpa.json` refers to PPSK, not WPA-Personal. wif-services `dpsk-local-auth` is a separate automation concept
+(`security=4`, `ppskSetting`). These two security codes must map to different `WiFiNetworksResource.create()` types. wif-services `dpsk-local-auth` is a separate automation concept
 and is not an alias for `ppsk_local`.
 
 ### Decision
@@ -686,8 +684,7 @@ and is not an alias for `ppsk_local`.
 - Accept type alias **`ppsk-local`** → `ppsk_local` in `_normalize_network_type()`.
 - Validate auth kwargs by type: `psk=` only for `type='psk'`; `ppsk_profile_name` / `ppsk_setting` only for
   `ppsk_local` / `dpsk`; reject cross-type combinations with explicit errors.
-- Document parity in `docs/st2_wlan_creation.md` (sections 3 and 5); tplink_omada pack maps `wpa` → `psk` only;
-  `ppsk_local` is SDK-ready for future pack/workflow use.
+- tplink_omada pack maps `wpa` → `psk` only; `ppsk_local` is SDK-ready for future pack/workflow use.
 
 ### Consequences
 - Callers must not pass `ppsk_profile_name` when creating WPA-Personal SSIDs.

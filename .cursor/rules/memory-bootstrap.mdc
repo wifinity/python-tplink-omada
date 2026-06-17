@@ -1,0 +1,15 @@
+---
+description: Bootstrap agent context for python-tplink-omada
+alwaysApply: true
+---
+
+# python-tplink-omada bootstrap
+
+When this repository is introduced or becomes the active working repository in a chat:
+
+1. Read `.agents/memory/python-tplink-omada-repository-memory.md` first.
+2. Do **not** read `.cursor/memory/` for canonical content — it is a shim only.
+3. Read [docs/AGENTS.md](../docs/AGENTS.md) for package layout and API conventions.
+4. For tests, use `make tests` — do not run bare `pytest`.
+
+Do this before proposing plans or making implementation decisions.

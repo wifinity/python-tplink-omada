@@ -360,7 +360,7 @@ Further examples (security types, VLAN, cloning):
 ```python
 from omada_client import strip_ssid_detail_for_create
 
-# WPA-Personal (security=3) — shared passphrase; see caller-owned WLAN samples/wpa_basic.json
+# WPA-Personal (security=3) — shared passphrase
 created_wifi_network = client.wifi_networks.create(
     site_id="your-site-id",
     wlan_group="Corp",
@@ -371,7 +371,7 @@ created_wifi_network = client.wifi_networks.create(
     # pmf_mode defaults to 3 for psk (wpa_basic.json); pass pmf_mode=2 for PMF capable
 )
 
-# Corporate PPSK (security=4) — profile-based; see caller-owned WLAN samples/wpa.json (not WPA-Personal)
+# Corporate PPSK (security=4) — profile-based
 # Alias type="ppsk-local" is accepted.
 
 # PPSK with RADIUS (security=5) — profile IDs as parameters (vlan= builds vlanSetting pool shape)
@@ -395,7 +395,7 @@ created_ppsk_local = client.wifi_networks.create(
     ppsk_profile_name="Services_PPSK_Profile",
 )
 
-# Multicast: flat PATCH fields (not nested under multiCast). Presets from caller-owned WLAN samples.
+# Multicast: flat PATCH fields (not nested under multiCast). Caller owns preset dicts.
 # filterMode bitmask: IGMP=1, mDNS=2, Others=4 (guest/signup samples use 15).
 GUEST_MULTICAST = {
     "multiCastEnable": True,
@@ -437,7 +437,7 @@ created_ppsk_with_multicast = client.wifi_networks.create(
 )
 
 # Rate control: caller supplies flat PATCH fields (not nested under rateControl).
-# Field reference: caller-owned WLAN samples/*.json (rateControl key in samples is GET shape only).
+# Rate control: caller supplies flat PATCH fields (rateControl key in GET detail is not the PATCH body).
 RATE_CONTROL = {
     "rate2gCtrlEnable": True,
     "lowerDensity2g": 12,
