@@ -70,6 +70,7 @@ class DummyHttpClient:
     def __init__(self) -> None:
         self.requests: list[tuple[str, str, dict]] = []
         self._get_response: dict = {}
+        self._post_response: dict = {}
 
     def api_path(self, path: str) -> str:
         return path.replace("/openapi/v1/", "/openapi/v1/OMADACID/")
@@ -77,6 +78,10 @@ class DummyHttpClient:
     def get(self, url: str, **kwargs) -> dict:
         self.requests.append(("GET", url, kwargs))
         return self._get_response
+
+    def post(self, url: str, **kwargs) -> dict:
+        self.requests.append(("POST", url, kwargs))
+        return self._post_response
 
     def put(self, url: str, **kwargs) -> dict:
         self.requests.append(("PUT", url, kwargs))
@@ -201,26 +206,33 @@ def test_switches_resource_applies_unknown_status_meaning_fallbacks() -> None:
 
 def test_get_ports_returns_port_list_for_matching_switch() -> None:
     http = DummyHttpClient()
-    http._get_response = {
-        "result": {
-            "data": [
-                {"mac": "AA-BB-CC-DD-EE-FF", "portList": [{"port": 1, "name": "uplink"}, {"port": 2, "name": ""}]},
-                {"mac": "11-22-33-44-55-66", "portList": [{"port": 1, "name": "other"}]},
-            ]
-        }
+    http._post_response = {
+        "result": [
+            {
+                "mac": "AA-BB-CC-DD-EE-FF",
+                "ports": [
+                    {"port": 1, "name": "AP", "disable": False},
+                    {"port": 2, "name": "Unused", "disable": True},
+                ],
+            },
+            {"mac": "11-22-33-44-55-66", "ports": [{"port": 1, "name": "other", "disable": False}]},
+        ]
     }
     resource = SwitchesResource(http)
 
     ports = resource.get_ports(site_id="site-1", switch_mac="aa:bb:cc:dd:ee:ff")
 
-    assert ports == [{"port": 1, "name": "uplink"}, {"port": 2, "name": ""}]
-    assert http.requests[0][0] == "GET"
-    assert "switch-detail" in http.requests[0][1]
+    assert ports == [{"port": 1, "name": "AP", "disable": False}, {"port": 2, "name": "Unused", "disable": True}]
+    method, url, kwargs = http.requests[0]
+    assert method == "POST"
+    assert "switches/ports/select" in url
+    assert kwargs["json"]["selectAll"] is True
+    assert kwargs["json"]["filters"]["switchMac"] == "AA-BB-CC-DD-EE-FF"
 
 
 def test_get_ports_returns_empty_when_switch_not_found() -> None:
     http = DummyHttpClient()
-    http._get_response = {"result": {"data": []}}
+    http._post_response = {"result": []}
     resource = SwitchesResource(http)
 
     ports = resource.get_ports(site_id="site-1", switch_mac="aa:bb:cc:dd:ee:ff")

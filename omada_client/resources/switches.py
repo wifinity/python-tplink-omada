@@ -107,20 +107,25 @@ class SwitchesResource:
     def get_ports(self, *, site_id: str, switch_mac: str) -> list[dict[str, Any]]:
         """Return current port settings for one switch.
 
-        Calls GET /switches/ports/switch-detail (site-wide) and filters by MAC.
+        Uses POST /switches/ports/select with selectAll=true filtered to this switch MAC.
+        Each item in the returned list is an OswPortVO with fields including
+        'port' (int), 'name' (str), and 'disable' (bool).
         Returns [] when the switch is not present in the response.
         """
         normalized = normalize_mac(switch_mac)
         response = cast(
             Dict[str, Any],
-            self.client.get(self.client.api_path(f"/openapi/v1/sites/{site_id}/switches/ports/switch-detail")),
+            self.client.post(
+                self.client.api_path(f"/openapi/v1/sites/{site_id}/switches/ports/select"),
+                json={"selectAll": True, "switchList": [], "filters": {"switchMac": normalized}},
+            ),
         )
         all_switches = self._extract_items(response)
         for sw in all_switches:
             if not isinstance(sw, dict):
                 continue
             if self._matches_mac(sw.get("mac"), normalized):
-                ports = sw.get("portList") or sw.get("ports") or []
+                ports = sw.get("ports") or []
                 return list(ports) if isinstance(ports, list) else []
         return []
 
