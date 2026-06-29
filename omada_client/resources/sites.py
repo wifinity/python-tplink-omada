@@ -136,6 +136,31 @@ class SitesResource:
         response = self.client.post(self._path("/openapi/v1/sites"), json=payload)
         return cast(Dict[str, Any], response)
 
+    def update_ntp(
+        self,
+        *,
+        site_id: str,
+        ntp_enable: bool,
+        ntp_servers: list[str],
+    ) -> dict[str, Any]:
+        current = cast(Dict[str, Any], self.client.get(self._path(f"/openapi/v1/sites/{site_id}")))
+        current_data = current.get("result", current)
+        if not isinstance(current_data, dict):
+            current_data = current
+
+        payload: dict[str, Any] = {
+            "region": current_data.get("region", DEFAULT_REGION) or DEFAULT_REGION,
+            "scenario": current_data.get("scenario", DEFAULT_SCENARIO) or DEFAULT_SCENARIO,
+            "timeZone": current_data.get("timeZone", DEFAULT_TIME_ZONE) or DEFAULT_TIME_ZONE,
+            "ntpEnable": ntp_enable,
+            "ntpServers": [{"address": s} for s in ntp_servers],
+        }
+        response = cast(Dict[str, Any], self.client.put(self._path(f"/openapi/v1/sites/{site_id}"), json=payload))
+        result = response.get("result")
+        if isinstance(result, dict):
+            return result
+        return response
+
     def update(
         self,
         *,

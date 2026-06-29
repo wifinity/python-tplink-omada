@@ -23,6 +23,7 @@ from .resources import (
     DevicesResource,
     OLTsResource,
     RadiusProfilesResource,
+    SiteServicesResource,
     SitesResource,
     SwitchesResource,
     WiFiNetworksResource,
@@ -69,6 +70,7 @@ class OmadaClient:
         self._http = httpx.Client(base_url=endpoint_config.api_base_url, timeout=timeout, verify=verify)
 
         self.sites = SitesResource(self)
+        self.site_services = SiteServicesResource(self)
         self.devices = DevicesResource(self)
         self.aps = APsResource(self)
         self.switches = SwitchesResource(self)

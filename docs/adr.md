@@ -720,3 +720,34 @@ and is not an alias for `ppsk_local`.
 - Callers must not pass `ppsk_profile_name` when creating WPA-Personal SSIDs.
 - WPA-Personal parity with `wpa_basic.json` uses SDK default `pmfMode=3` for `type='psk'` (breaking vs earlier
   default `2`; pass `pmf_mode=2` for PMF capable). `WPA_PSK_RATE_CONTROL` still required for rate-control parity.
+
+---
+
+## Decision 29 (2026-06): `SiteServicesResource` for site SNMP; `SitesResource.update_ntp` for NTP
+
+### Context
+
+Phase 1 Slice 1 of the switch management config pipeline requires applying SNMP and NTP
+settings to Omada sites. Investigation of the OpenAPI spec revealed:
+
+- SNMP is site-level: `GET/PATCH /openapi/v1/{omadacId}/sites/{siteId}/setting/service/snmp`
+  with `SnmpSettingOpenApiVO` (`snmpV1V2CEnable`, `snmpV3Enable`, `communityString`, `username`,
+  `password`).
+- NTP is set via the site `PUT` body (`UpdateSiteEntity`): `ntpEnable` (bool) + `ntpServers`
+  (list of `{address: str}`, up to 5). The `GET /setting/ntp` endpoint is read-only status only.
+- DNS: no switch-management DNS endpoint; DNS paths are gateway/DHCP LAN. Not implemented.
+
+### Decision
+
+- Add `SiteServicesResource` with `get_snmp(*, site_id)` and `update_snmp(*, site_id, ...)` to
+  encapsulate site-level service settings. Wire as `client.site_services`.
+- Add `SitesResource.update_ntp(*, site_id, ntp_enable, ntp_servers)` — GETs current site to
+  read required `region`/`scenario`/`timeZone` for the PUT body, then PUTs with NTP intent merged.
+  NTP server list is `list[str]`; method converts to `[{"address": s} for s in ntp_servers]`.
+
+### Consequences
+
+- `client.site_services.get_snmp(site_id=...)` / `client.site_services.update_snmp(site_id=..., ...)`
+  are the canonical SNMP read/write paths.
+- `client.sites.update_ntp(site_id=..., ntp_enable=..., ntp_servers=...)` reads then writes site NTP.
+- DNS resolver config for switches is not available via Omada OpenAPI v1 and is not implemented.

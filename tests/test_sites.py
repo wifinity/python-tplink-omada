@@ -426,3 +426,55 @@ def test_all_and_get_use_api_path_rewrite() -> None:
     client.get_response = {"result": {"siteId": "site-1", "name": "Main Site"}}
     resource.get(id="site-1")
     assert client.last_path == "/openapi/v1/omadac-1/sites/site-1"
+
+
+def test_update_ntp_sends_correct_payload() -> None:
+    client = DummyClient()
+    client.get_response = {
+        "result": {
+            "siteId": "site-1",
+            "region": "United Kingdom",
+            "scenario": "Dormitory",
+            "timeZone": "UTC",
+        }
+    }
+    resource = SitesResource(client)
+
+    resource.update_ntp(site_id="site-1", ntp_enable=True, ntp_servers=["10.0.0.1", "10.0.0.2"])
+
+    assert client.last_json["ntpEnable"] is True
+    assert client.last_json["ntpServers"] == [{"address": "10.0.0.1"}, {"address": "10.0.0.2"}]
+    assert client.last_json["region"] == "United Kingdom"
+    assert client.last_json["scenario"] == "Dormitory"
+    assert client.last_json["timeZone"] == "UTC"
+
+
+def test_update_ntp_empty_servers_disables_ntp() -> None:
+    client = DummyClient()
+    client.get_response = {
+        "result": {
+            "siteId": "site-1",
+            "region": "United Kingdom",
+            "scenario": "Dormitory",
+            "timeZone": "Europe/London",
+        }
+    }
+    resource = SitesResource(client)
+
+    resource.update_ntp(site_id="site-1", ntp_enable=False, ntp_servers=[])
+
+    assert client.last_json["ntpEnable"] is False
+    assert client.last_json["ntpServers"] == []
+    assert client.last_json["timeZone"] == "Europe/London"
+
+
+def test_update_ntp_uses_defaults_when_current_site_fields_missing() -> None:
+    client = DummyClient()
+    client.get_response = {"result": {}}  # no region/scenario/timeZone
+    resource = SitesResource(client)
+
+    resource.update_ntp(site_id="site-1", ntp_enable=True, ntp_servers=["ntp.example.com"])
+
+    assert client.last_json["region"] == "United Kingdom"
+    assert client.last_json["scenario"] == "Dormitory"
+    assert client.last_json["timeZone"] == "UTC"
