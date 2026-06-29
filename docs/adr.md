@@ -751,3 +751,43 @@ settings to Omada sites. Investigation of the OpenAPI spec revealed:
   are the canonical SNMP read/write paths.
 - `client.sites.update_ntp(site_id=..., ntp_enable=..., ntp_servers=...)` reads then writes site NTP.
 - DNS resolver config for switches is not available via Omada OpenAPI v1 and is not implemented.
+
+---
+
+## Decision 30 (2026-06): Switch port management via bulk endpoints
+
+### Context
+
+Phase 2 Slice 2 adds per-port admin state and name management for TP-Link switches. Two
+endpoint families exist: per-port (`/ports/{port}/name`, `/ports/{port}/status`) and
+bulk (`/multi-ports/name`, `/multi-ports/status`). A typical switch has 8–48 ports, so
+per-port calls would multiply API round-trips by the port count.
+
+For reads, `GET /switches/ports/switch-detail` is the only endpoint that returns per-port
+settings at the switch level. It is site-wide (all switches), so the SDK filters by MAC
+client-side. The response schema is incompletely documented in the OpenAPI spec; the
+implementation reads whatever `portList` or `ports` key is present and returns it.
+
+### Decision
+
+- **Writes:** use `PUT /switches/{switchMac}/multi-ports/name` and `PUT
+  /switches/{switchMac}/multi-ports/status`. One call for all renames; one call per
+  status group (enabled/disabled) rather than N per-port calls.
+- **Reads:** use `GET /switches/ports/switch-detail` filtered by switch MAC. Returns `[]`
+  when the switch is absent — the activity treats this as "unknown current state" and
+  writes desired values unconditionally (idempotent: second run reads state after the
+  first write and produces a no-op).
+- Methods added to `SwitchesResource`: `get_ports`, `set_ports_name`, `set_ports_status`.
+
+### Alternatives considered
+
+1. Per-port calls — rejected due to N×round-trips per port count.
+2. `PATCH /switches/{switchMac}/ports/{port}` (full OswPortSettingVO) — rejected; touches
+   all port settings, not just name and status; risks overwriting fields set by later slices.
+
+### Consequences
+
+- `client.switches.get_ports(site_id=..., switch_mac=...)` → `list[dict]`
+- `client.switches.set_ports_name(site_id=..., switch_mac=..., port_names=[{port, name}])`
+- `client.switches.set_ports_status(site_id=..., switch_mac=..., port_list=[...], enabled=bool)`
+

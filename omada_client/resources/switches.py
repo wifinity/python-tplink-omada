@@ -104,6 +104,68 @@ class SwitchesResource:
     def check_adopt(self, *, site_id: str, mac: str) -> dict[str, Any]:
         return cast(Dict[str, Any], self.client.devices.check_adopt(site_id=site_id, mac=mac))
 
+    def get_ports(self, *, site_id: str, switch_mac: str) -> list[dict[str, Any]]:
+        """Return current port settings for one switch.
+
+        Calls GET /switches/ports/switch-detail (site-wide) and filters by MAC.
+        Returns [] when the switch is not present in the response.
+        """
+        normalized = normalize_mac(switch_mac)
+        response = cast(
+            Dict[str, Any],
+            self.client.get(self.client.api_path(f"/openapi/v1/sites/{site_id}/switches/ports/switch-detail")),
+        )
+        all_switches = self._extract_items(response)
+        for sw in all_switches:
+            if not isinstance(sw, dict):
+                continue
+            if self._matches_mac(sw.get("mac"), normalized):
+                ports = sw.get("portList") or sw.get("ports") or []
+                return list(ports) if isinstance(ports, list) else []
+        return []
+
+    def set_ports_name(
+        self,
+        *,
+        site_id: str,
+        switch_mac: str,
+        port_names: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Rename multiple ports in one request.
+
+        port_names: list of {port: int, name: str}
+        PUT /switches/{switchMac}/multi-ports/name
+        """
+        normalized = normalize_mac(switch_mac)
+        return cast(
+            Dict[str, Any],
+            self.client.put(
+                self.client.api_path(f"/openapi/v1/sites/{site_id}/switches/{normalized}/multi-ports/name"),
+                json={"portNameList": port_names},
+            ),
+        )
+
+    def set_ports_status(
+        self,
+        *,
+        site_id: str,
+        switch_mac: str,
+        port_list: list[int],
+        enabled: bool,
+    ) -> dict[str, Any]:
+        """Enable or disable a list of ports in one request.
+
+        PUT /switches/{switchMac}/multi-ports/status  (status: 1=on, 0=off)
+        """
+        normalized = normalize_mac(switch_mac)
+        return cast(
+            Dict[str, Any],
+            self.client.put(
+                self.client.api_path(f"/openapi/v1/sites/{site_id}/switches/{normalized}/multi-ports/status"),
+                json={"portList": port_list, "status": 1 if enabled else 0},
+            ),
+        )
+
     def delete(self, *, site_id: str, mac: str) -> dict[str, Any]:
         normalized_mac = normalize_mac(mac)
         return cast(Dict[str, Any], self.client.devices.delete(site_id=site_id, mac=normalized_mac))

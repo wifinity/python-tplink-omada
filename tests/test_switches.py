@@ -64,6 +64,25 @@ class DummyDevicesResource:
         return {"forgotten": True}
 
 
+class DummyHttpClient:
+    """Minimal HTTP client stub for testing port methods directly."""
+
+    def __init__(self) -> None:
+        self.requests: list[tuple[str, str, dict]] = []
+        self._get_response: dict = {}
+
+    def api_path(self, path: str) -> str:
+        return path.replace("/openapi/v1/", "/openapi/v1/OMADACID/")
+
+    def get(self, url: str, **kwargs) -> dict:
+        self.requests.append(("GET", url, kwargs))
+        return self._get_response
+
+    def put(self, url: str, **kwargs) -> dict:
+        self.requests.append(("PUT", url, kwargs))
+        return {"ok": True}
+
+
 class DummyClient:
     def __init__(self) -> None:
         self.devices = DummyDevicesResource()
@@ -178,3 +197,70 @@ def test_switches_resource_applies_unknown_status_meaning_fallbacks() -> None:
 
     assert by_name["statusMeaning"] == "Unknown status: 99"
     assert by_name["detailStatusMeaning"] == "Unknown detailStatus: 999"
+
+
+def test_get_ports_returns_port_list_for_matching_switch() -> None:
+    http = DummyHttpClient()
+    http._get_response = {
+        "result": {
+            "data": [
+                {"mac": "AA-BB-CC-DD-EE-FF", "portList": [{"port": 1, "name": "uplink"}, {"port": 2, "name": ""}]},
+                {"mac": "11-22-33-44-55-66", "portList": [{"port": 1, "name": "other"}]},
+            ]
+        }
+    }
+    resource = SwitchesResource(http)
+
+    ports = resource.get_ports(site_id="site-1", switch_mac="aa:bb:cc:dd:ee:ff")
+
+    assert ports == [{"port": 1, "name": "uplink"}, {"port": 2, "name": ""}]
+    assert http.requests[0][0] == "GET"
+    assert "switch-detail" in http.requests[0][1]
+
+
+def test_get_ports_returns_empty_when_switch_not_found() -> None:
+    http = DummyHttpClient()
+    http._get_response = {"result": {"data": []}}
+    resource = SwitchesResource(http)
+
+    ports = resource.get_ports(site_id="site-1", switch_mac="aa:bb:cc:dd:ee:ff")
+
+    assert ports == []
+
+
+def test_set_ports_name_sends_correct_body() -> None:
+    http = DummyHttpClient()
+    resource = SwitchesResource(http)
+
+    resource.set_ports_name(
+        site_id="site-1",
+        switch_mac="aa:bb:cc:dd:ee:ff",
+        port_names=[{"port": 1, "name": "uplink"}, {"port": 2, "name": "AP"}],
+    )
+
+    method, url, kwargs = http.requests[0]
+    assert method == "PUT"
+    assert "AA-BB-CC-DD-EE-FF" in url
+    assert "multi-ports/name" in url
+    assert kwargs["json"] == {"portNameList": [{"port": 1, "name": "uplink"}, {"port": 2, "name": "AP"}]}
+
+
+def test_set_ports_status_enable_sends_status_1() -> None:
+    http = DummyHttpClient()
+    resource = SwitchesResource(http)
+
+    resource.set_ports_status(site_id="site-1", switch_mac="aa:bb:cc:dd:ee:ff", port_list=[3, 4], enabled=True)
+
+    _, url, kwargs = http.requests[0]
+    assert "multi-ports/status" in url
+    assert kwargs["json"] == {"portList": [3, 4], "status": 1}
+
+
+def test_set_ports_status_disable_sends_status_0() -> None:
+    http = DummyHttpClient()
+    resource = SwitchesResource(http)
+
+    resource.set_ports_status(site_id="site-1", switch_mac="aa:bb:cc:dd:ee:ff", port_list=[5], enabled=False)
+
+    _, _, kwargs = http.requests[0]
+    assert kwargs["json"] == {"portList": [5], "status": 0}
