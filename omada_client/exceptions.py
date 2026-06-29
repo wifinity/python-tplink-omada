@@ -37,6 +37,10 @@ class WLANGroupNotFoundError(OmadaNotFoundError):
     pass
 
 
+class RadiusProfileNotFoundError(OmadaNotFoundError):
+    pass
+
+
 class OmadaValidationError(OmadaAPIError):
     def __init__(
         self,

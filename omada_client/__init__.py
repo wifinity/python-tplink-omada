@@ -9,6 +9,7 @@ from .exceptions import (
     OmadaNotFoundError,
     OmadaPermissionError,
     OmadaValidationError,
+    RadiusProfileNotFoundError,
     WiFiNetworkPartiallyConfiguredError,
     WLANGroupNotFoundError,
 )
@@ -27,6 +28,7 @@ __all__ = [
     "OmadaNotFoundError",
     "OmadaValidationError",
     "OmadaConnectionError",
+    "RadiusProfileNotFoundError",
     "WiFiNetworkPartiallyConfiguredError",
     "WLANGroupNotFoundError",
     "set_log_level",

@@ -672,6 +672,36 @@ created, retry the failed step, or delete it without a name lookup.
 
 ---
 
+## Decision 28 (2026-06): `RadiusProfilesResource` with create-if-absent upsert
+
+### Context
+`type="dpsk"` WiFi create requires a RADIUS profile to already exist on the Omada site.
+Automation workflows need to ensure the profile is created before upserting SSIDs. The SDK
+previously had only private lookup helpers inside `WiFiNetworksResource`; no public create
+surface existed.
+
+Omada error `-34015` blocks modification of RADIUS profiles that are already in use by
+`ppsk-with-radius` SSIDs, making update-on-conflict unsafe.
+
+### Decision
+- Add `client.radius_profiles` as a public resource (`RadiusProfilesResource`) with keyword-only methods:
+  - `all(*, site_id)` — `GET /openapi/v1/sites/{siteId}/profiles/radius`
+  - `get(*, site_id, id=None, name=None)` — list + match; raises `RadiusProfileNotFoundError` for 0 matches
+  - `create(*, site_id, name, auth_servers, accounting_enabled=False, wireless_vlan_assignment=False, **kwargs)` — `POST`
+  - `upsert(...)` — `all()` → name match → skip if found; create if not; returns `(profile_dict, created: bool)`
+- Add `RadiusProfileNotFoundError(OmadaNotFoundError)` for missing-profile lookup failures.
+- Upsert is **create-if-absent only**: an existing profile with the same name is returned unchanged,
+  regardless of server settings. This is intentional given Omada's in-use modification block.
+
+### Consequences
+- Workflow automation can idempotently ensure a RADIUS profile exists before SSID creation.
+- Callers that need to update an in-use profile must delete + recreate it manually; the SDK does
+  not attempt this to avoid disrupting connected clients.
+- Private `_list_radius_profiles` / `_lookup_radius_profile_id_by_name` on `WiFiNetworksResource`
+  are unchanged; they remain as internal helpers for the SSID create flow.
+
+---
+
 ## Decision 27 (2026-05): Distinct SDK types `psk` vs `ppsk_local`
 
 ### Context
