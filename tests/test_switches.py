@@ -261,24 +261,57 @@ def test_set_ports_name_sends_correct_body() -> None:
     assert kwargs["json"] == {"portNameList": [{"port": 1, "name": "uplink"}, {"port": 2, "name": "AP"}]}
 
 
-def test_set_ports_status_enable_sends_disable_false() -> None:
+def test_get_port_profiles_uses_v2_url() -> None:
     http = DummyHttpClient()
+    http._get_response = {
+        "result": {"data": [{"id": "profile-1", "name": "All"}, {"id": "profile-2", "name": "Disable"}]}
+    }
     resource = SwitchesResource(http)
 
-    resource.set_ports_status(site_id="site-1", switch_mac="aa:bb:cc:dd:ee:ff", port_list=[3, 4], enabled=True)
+    profiles = resource.get_port_profiles(site_id="site-1")
 
     method, url, kwargs = http.requests[0]
-    assert method == "PATCH"
-    assert "multi-ports/config" in url
-    assert kwargs["json"] == {"portList": [3, 4], "disable": False}
+    assert method == "GET"
+    assert "/openapi/v2/" in url
+    assert "lan-profiles" in url
+    assert kwargs["params"] == {"page": 1, "pageSize": 1000}
+    assert profiles == [{"id": "profile-1", "name": "All"}, {"id": "profile-2", "name": "Disable"}]
 
 
-def test_set_ports_status_disable_sends_disable_true() -> None:
+def test_set_port_profiles_puts_per_port_with_resolved_id() -> None:
     http = DummyHttpClient()
+    http._get_response = {
+        "result": {"data": [{"id": "profile-disable", "name": "Disable"}, {"id": "profile-all", "name": "All"}]}
+    }
     resource = SwitchesResource(http)
 
-    resource.set_ports_status(site_id="site-1", switch_mac="aa:bb:cc:dd:ee:ff", port_list=[5], enabled=False)
+    resource.set_port_profiles(
+        site_id="site-1",
+        switch_mac="aa:bb:cc:dd:ee:ff",
+        port_list=[3, 5],
+        profile_name="Disable",
+    )
 
-    method, _, kwargs = http.requests[0]
-    assert method == "PATCH"
-    assert kwargs["json"] == {"portList": [5], "disable": True}
+    put_requests = [(m, u, kw) for m, u, kw in http.requests if m == "PUT"]
+    assert len(put_requests) == 2
+    assert "ports/3/profile" in put_requests[0][1]
+    assert "ports/5/profile" in put_requests[1][1]
+    assert put_requests[0][2]["json"] == {"profileId": "profile-disable"}
+    assert put_requests[1][2]["json"] == {"profileId": "profile-disable"}
+
+
+def test_set_port_profiles_raises_for_unknown_profile() -> None:
+    http = DummyHttpClient()
+    http._get_response = {"result": {"data": [{"id": "profile-all", "name": "All"}]}}
+    resource = SwitchesResource(http)
+
+    try:
+        resource.set_port_profiles(
+            site_id="site-1",
+            switch_mac="aa:bb:cc:dd:ee:ff",
+            port_list=[1],
+            profile_name="NonExistent",
+        )
+        assert False, "Expected ValueError"
+    except ValueError as exc:
+        assert "NonExistent" in str(exc)

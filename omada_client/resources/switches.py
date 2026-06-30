@@ -150,26 +150,41 @@ class SwitchesResource:
             ),
         )
 
-    def set_ports_status(
+    def get_port_profiles(self, *, site_id: str) -> list[dict[str, Any]]:
+        """Return all LAN port profiles for the site.
+
+        Calls GET /openapi/v2/.../sites/{siteId}/lan-profiles.
+        """
+        url = self.client.api_path(f"/openapi/v1/sites/{site_id}/lan-profiles").replace("/openapi/v1/", "/openapi/v2/")
+        response = cast(Dict[str, Any], self.client.get(url, params={"page": 1, "pageSize": 1000}))
+        return cast(List[Any], self._extract_items(response))
+
+    def set_port_profiles(
         self,
         *,
         site_id: str,
         switch_mac: str,
         port_list: list[int],
-        enabled: bool,
-    ) -> dict[str, Any]:
-        """Enable or disable a list of ports in one request.
+        profile_name: str,
+    ) -> None:
+        """Set a named port profile on each port in port_list.
 
-        PATCH /switches/{switchMac}/multi-ports/config (BatchOswPortSettingVO.disable)
+        Resolves the profile name to an ID via get_port_profiles, then calls
+        PUT /switches/{switchMac}/ports/{port}/profile for each port.
         """
-        normalized = normalize_mac(switch_mac)
-        return cast(
-            Dict[str, Any],
-            self.client.patch(
-                self.client.api_path(f"/openapi/v1/sites/{site_id}/switches/{normalized}/multi-ports/config"),
-                json={"portList": port_list, "disable": not enabled},
-            ),
+        profiles = self.get_port_profiles(site_id=site_id)
+        profile_id = next(
+            (p["id"] for p in profiles if isinstance(p, dict) and p.get("name") == profile_name),
+            None,
         )
+        if profile_id is None:
+            raise ValueError(f"Port profile '{profile_name}' not found in site '{site_id}'")
+        normalized = normalize_mac(switch_mac)
+        for port in port_list:
+            self.client.put(
+                self.client.api_path(f"/openapi/v1/sites/{site_id}/switches/{normalized}/ports/{port}/profile"),
+                json={"profileId": profile_id},
+            )
 
     def delete(self, *, site_id: str, mac: str) -> dict[str, Any]:
         normalized_mac = normalize_mac(mac)
