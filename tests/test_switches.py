@@ -87,6 +87,10 @@ class DummyHttpClient:
         self.requests.append(("PUT", url, kwargs))
         return {"ok": True}
 
+    def patch(self, url: str, **kwargs) -> dict:
+        self.requests.append(("PATCH", url, kwargs))
+        return {"ok": True}
+
 
 class DummyClient:
     def __init__(self) -> None:
@@ -257,22 +261,24 @@ def test_set_ports_name_sends_correct_body() -> None:
     assert kwargs["json"] == {"portNameList": [{"port": 1, "name": "uplink"}, {"port": 2, "name": "AP"}]}
 
 
-def test_set_ports_status_enable_sends_status_1() -> None:
+def test_set_ports_status_enable_sends_disable_false() -> None:
     http = DummyHttpClient()
     resource = SwitchesResource(http)
 
     resource.set_ports_status(site_id="site-1", switch_mac="aa:bb:cc:dd:ee:ff", port_list=[3, 4], enabled=True)
 
-    _, url, kwargs = http.requests[0]
-    assert "multi-ports/status" in url
-    assert kwargs["json"] == {"portList": [3, 4], "status": 1}
+    method, url, kwargs = http.requests[0]
+    assert method == "PATCH"
+    assert "multi-ports/config" in url
+    assert kwargs["json"] == {"portList": [3, 4], "disable": False}
 
 
-def test_set_ports_status_disable_sends_status_0() -> None:
+def test_set_ports_status_disable_sends_disable_true() -> None:
     http = DummyHttpClient()
     resource = SwitchesResource(http)
 
     resource.set_ports_status(site_id="site-1", switch_mac="aa:bb:cc:dd:ee:ff", port_list=[5], enabled=False)
 
-    _, _, kwargs = http.requests[0]
-    assert kwargs["json"] == {"portList": [5], "status": 0}
+    method, _, kwargs = http.requests[0]
+    assert method == "PATCH"
+    assert kwargs["json"] == {"portList": [5], "disable": True}

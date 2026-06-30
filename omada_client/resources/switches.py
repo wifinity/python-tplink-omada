@@ -160,14 +160,14 @@ class SwitchesResource:
     ) -> dict[str, Any]:
         """Enable or disable a list of ports in one request.
 
-        PUT /switches/{switchMac}/multi-ports/status  (status: 1=on, 0=off)
+        PATCH /switches/{switchMac}/multi-ports/config (BatchOswPortSettingVO.disable)
         """
         normalized = normalize_mac(switch_mac)
         return cast(
             Dict[str, Any],
-            self.client.put(
-                self.client.api_path(f"/openapi/v1/sites/{site_id}/switches/{normalized}/multi-ports/status"),
-                json={"portList": port_list, "status": 1 if enabled else 0},
+            self.client.patch(
+                self.client.api_path(f"/openapi/v1/sites/{site_id}/switches/{normalized}/multi-ports/config"),
+                json={"portList": port_list, "disable": not enabled},
             ),
         )
 
