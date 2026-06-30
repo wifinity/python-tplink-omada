@@ -8,16 +8,22 @@ Idempotency key: VLAN ID integer (``vlan`` field).  The ``vlan_id_to_network_id`
 helper provides a one-shot lookup dict for callers that need to resolve VLAN
 integers to Omada network IDs (e.g. the port-config workflow).
 
-DHCP server:
-    The controller may enable a DHCP server on newly created networks.
-    Callers that need the DHCP server off must pass ``dhcp_server_enabled=False``
-    to ``create()`` (the default) and check the live value during updates.  The
-    ``upsert_site_vlans`` workflow activity owns enforcement of this convention.
+DHCP device:
+    ``create()`` accepts ``dhcp_device`` to control which device serves DHCP.
+    Default is ``"external"`` (no controller DHCP server — Wifinity provides
+    DHCP externally).  The ``upsert_site_vlans`` workflow activity relies on
+    this default and does not pass an explicit value.
+
+    Note: ``create()`` uses the ``POST /networks/confirm`` endpoint, which does
+    NOT auto-create a LAN profile (port profile) as a side effect.  The
+    deprecated ``POST /lan-networks`` endpoint did auto-create one per network.
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, cast
+from typing import Any, Dict, Literal, cast
+
+_DHCP_DEVICE_TYPE: dict[str, int] = {"gateway": 1, "switch": 2, "external": 3}
 
 
 class LanNetworksResource:
@@ -90,24 +96,29 @@ class LanNetworksResource:
         site_id: str,
         name: str,
         vlan_id: int,
-        dhcp_server_enabled: bool = False,
+        dhcp_device: Literal["external", "gateway", "switch"] = "external",
     ) -> dict[str, Any]:
-        """Create a VLAN-type LAN network.
+        """Create a VLAN-type LAN network (no port profile created as side effect).
 
-        ``dhcp_server_enabled`` defaults to ``False``.  Pass ``True`` only when
-        the controller's DHCP server is explicitly wanted on this segment.
+        ``dhcp_device`` selects which device serves DHCP for the network:
+            ``"external"``  — external server, no controller DHCP (default)
+            ``"gateway"``   — gateway serves DHCP
+            ``"switch"``    — switch serves DHCP
         """
         if not isinstance(name, str) or not name:
             raise ValueError("name must be a non-empty string")
         payload: dict[str, Any] = {
-            "name": name,
-            "purpose": 0,
-            "vlan": vlan_id,
-            "igmpSnoopEnable": False,
-            "dhcpSettingsVO": {"enable": dhcp_server_enabled},
+            "lanNetwork": {
+                "name": name,
+                "vlan": vlan_id,
+                "vlanType": 0,
+                "deviceType": _DHCP_DEVICE_TYPE[dhcp_device],
+                "igmpSnoopEnable": False,
+            },
+            "deviceConfig": {"deviceList": []},
         }
         response = self.client.post(
-            self._path(f"/openapi/v1/sites/{site_id}/lan-networks"),
+            self._path(f"/openapi/v1/sites/{site_id}/networks/confirm"),
             json=payload,
         )
         return cast(Dict[str, Any], response)

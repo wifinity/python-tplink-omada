@@ -157,31 +157,34 @@ def test_create_posts_correct_payload() -> None:
 
     assert len(client.post_calls) == 1
     path, payload = client.post_calls[0]
-    assert path == "/openapi/v1/sites/s1/lan-networks"
-    assert payload["name"] == "guest"
-    assert payload["vlan"] == 98
-    assert payload["purpose"] == 0
-    assert payload["dhcpSettingsVO"]["enable"] is False
+    assert path == "/openapi/v1/sites/s1/networks/confirm"
+    lan = payload["lanNetwork"]
+    assert lan["name"] == "guest"
+    assert lan["vlan"] == 98
+    assert lan["vlanType"] == 0
+    assert lan["deviceType"] == 3
+    assert lan["igmpSnoopEnable"] is False
+    assert payload["deviceConfig"] == {"deviceList": []}
 
 
-def test_create_dhcp_server_disabled_by_default() -> None:
+def test_create_dhcp_device_default_is_external() -> None:
     client = DummyClient()
     resource = LanNetworksResource(client)
 
     resource.create(site_id="s1", name="guest", vlan_id=98)
 
     _, payload = client.post_calls[0]
-    assert payload["dhcpSettingsVO"]["enable"] is False
+    assert payload["lanNetwork"]["deviceType"] == 3
 
 
-def test_create_dhcp_server_can_be_enabled_explicitly() -> None:
+def test_create_dhcp_device_gateway() -> None:
     client = DummyClient()
     resource = LanNetworksResource(client)
 
-    resource.create(site_id="s1", name="guest", vlan_id=98, dhcp_server_enabled=True)
+    resource.create(site_id="s1", name="guest", vlan_id=98, dhcp_device="gateway")
 
     _, payload = client.post_calls[0]
-    assert payload["dhcpSettingsVO"]["enable"] is True
+    assert payload["lanNetwork"]["deviceType"] == 1
 
 
 def test_create_raises_on_empty_name() -> None:
@@ -343,7 +346,7 @@ def test_create_uses_api_path_rewrite() -> None:
 
     resource.create(site_id="s1", name="guest", vlan_id=98)
 
-    assert client.post_calls[0][0] == "/openapi/v1/omadac-1/sites/s1/lan-networks"
+    assert client.post_calls[0][0] == "/openapi/v1/omadac-1/sites/s1/networks/confirm"
 
 
 def test_update_uses_api_path_rewrite() -> None:
