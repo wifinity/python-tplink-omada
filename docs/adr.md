@@ -586,7 +586,7 @@ secured SSIDs (for example `ppsk_local`) left `arpCastEnable` false unless calle
 
 ### Context
 `type="guest"` on `WiFiNetworksResource.create()` mapped to open + `guestNetEnable=True` (client isolation), which
-collided with Omada “guest” terminology and diverged from the cross-vendor wif-services schema (`open-isolated` in
+collided with Omada “guest” terminology and diverged from the cross-vendor automation schema (`open-isolated` in
 orchestration / Ruckus automation).
 
 ### Decision
@@ -595,7 +595,7 @@ orchestration / Ruckus automation).
 
 ### Consequences
 - Breaking change for callers using `type="guest"`; migrate to `type="open-isolated"`.
-- Aligns Omada SDK string types with wif-services / `create_and_activate_wifi_network` schema naming.
+- Aligns Omada SDK string types with the cross-vendor automation schema naming.
 
 ---
 
@@ -706,7 +706,7 @@ Omada error `-34015` blocks modification of RADIUS profiles that are already in 
 
 ### Context
 Omada uses different `security` codes for WPA-Personal (shared passphrase, `security=3`) and corporate PPSK
-(`security=4`, `ppskSetting`). These two security codes must map to different `WiFiNetworksResource.create()` types. wif-services `dpsk-local-auth` is a separate automation concept
+(`security=4`, `ppskSetting`). These two security codes must map to different `WiFiNetworksResource.create()` types. `dpsk-local-auth` is a separate automation concept
 and is not an alias for `ppsk_local`.
 
 ### Decision
@@ -727,8 +727,7 @@ and is not an alias for `ppsk_local`.
 
 ### Context
 
-Phase 1 Slice 1 of the switch management config pipeline requires applying SNMP and NTP
-settings to Omada sites. Investigation of the OpenAPI spec revealed:
+Switch management requires applying SNMP and NTP settings to Omada sites. Investigation of the OpenAPI spec revealed:
 
 - SNMP is site-level: `GET/PATCH /openapi/v1/{omadacId}/sites/{siteId}/setting/service/snmp`
   with `SnmpSettingOpenApiVO` (`snmpV1V2CEnable`, `snmpV3Enable`, `communityString`, `username`,
@@ -754,40 +753,41 @@ settings to Omada sites. Investigation of the OpenAPI spec revealed:
 
 ---
 
-## Decision 30 (2026-06): Switch port management via bulk endpoints
+## Decision 30 (2026-06): Switch port management — reads, renames, and profile-based enable/disable
 
 ### Context
 
-Phase 2 Slice 2 adds per-port admin state and name management for TP-Link switches. Two
-endpoint families exist: per-port (`/ports/{port}/name`, `/ports/{port}/status`) and
-bulk (`/multi-ports/name`, `/multi-ports/status`). A typical switch has 8–48 ports, so
-per-port calls would multiply API round-trips by the port count.
+Per-port admin state and name management for TP-Link switches requires the following endpoints.
 
-For reads, `GET /switches/ports/switch-detail` is the only endpoint that returns per-port
-settings at the switch level. It is site-wide (all switches), so the SDK filters by MAC
-client-side. The response schema is incompletely documented in the OpenAPI spec; the
-implementation reads whatever `portList` or `ports` key is present and returns it.
+**Reads:** `GET /switches/ports/switch-detail` was the first candidate but returns connected-client
+data from the uplink port, not per-port configuration. The correct endpoint is
+`POST /switches/ports/select` with `{"selectAll": true, "filters": {"switchMac": "..."}}`, which
+returns `OswPortVO` objects with `port` (int), `name` (str), and `disable` (bool).
+
+**Renames:** `PUT /switches/{switchMac}/multi-ports/name` works as documented.
+
+**Enable/disable:** Omada does not have a direct admin enable/disable toggle on ports. Three
+candidates were tested:
+- `PUT /multi-ports/status` with `{"portList": [...], "status": 0}` — returns success but has no effect.
+- `PATCH /multi-ports/config` with `{"portList": [...], "disable": true}` — returns success but has no effect.
+- `PUT /switches/{switchMac}/ports/{port}/profile` with `{"profileId": "..."}` — works correctly.
+
+Disabling a port requires setting its profile to the built-in "Disable" profile; enabling requires
+setting it to "All" (or another active profile). Profile IDs are controller-assigned UUIDs looked up
+at runtime via `GET /openapi/v2/.../sites/{siteId}/lan-profiles`.
 
 ### Decision
 
-- **Writes:** use `PUT /switches/{switchMac}/multi-ports/name` and `PUT
-  /switches/{switchMac}/multi-ports/status`. One call for all renames; one call per
-  status group (enabled/disabled) rather than N per-port calls.
-- **Reads:** use `GET /switches/ports/switch-detail` filtered by switch MAC. Returns `[]`
-  when the switch is absent — the activity treats this as "unknown current state" and
-  writes desired values unconditionally (idempotent: second run reads state after the
-  first write and produces a no-op).
-- Methods added to `SwitchesResource`: `get_ports`, `set_ports_name`, `set_ports_status`.
-
-### Alternatives considered
-
-1. Per-port calls — rejected due to N×round-trips per port count.
-2. `PATCH /switches/{switchMac}/ports/{port}` (full OswPortSettingVO) — rejected; touches
-   all port settings, not just name and status; risks overwriting fields set by later slices.
+- **Reads:** `POST /switches/ports/select` filtered by switch MAC.
+- **Renames:** `PUT /switches/{switchMac}/multi-ports/name` — one call for all renames.
+- **Enable/disable:** `PUT /switches/{switchMac}/ports/{port}/profile` per port, with profile ID
+  resolved by name from `GET /openapi/v2/.../sites/{siteId}/lan-profiles`.
+- Methods on `SwitchesResource`: `get_ports`, `set_ports_name`, `get_port_profiles`, `set_port_profiles`.
 
 ### Consequences
 
 - `client.switches.get_ports(site_id=..., switch_mac=...)` → `list[dict]`
 - `client.switches.set_ports_name(site_id=..., switch_mac=..., port_names=[{port, name}])`
-- `client.switches.set_ports_status(site_id=..., switch_mac=..., port_list=[...], enabled=bool)`
+- `client.switches.get_port_profiles(site_id=...)` → `list[dict]`
+- `client.switches.set_port_profiles(site_id=..., switch_mac=..., port_list=[...], profile_name=str)` — resolves name to ID internally; one PUT per port.
 

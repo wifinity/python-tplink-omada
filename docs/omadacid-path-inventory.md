@@ -49,6 +49,14 @@ Source: `spec/fixed/all-fixed.json`
   - SDK path template: `/openapi/v1/sites/{siteId}/ap-groups`
   - Canonical local-controller path: `/openapi/v1/{omadacId}/sites/{siteId}/ap-groups`
   - Fixed spec match: no exact route in current fixed spec
+- `LanNetworksResource.all`, `LanNetworksResource.create`
+  - SDK path template: `/openapi/v1/sites/{siteId}/lan-networks`
+  - Canonical local-controller path: `/openapi/v1/{omadacId}/sites/{siteId}/lan-networks`
+  - Fixed spec match: exact (`GET` and `POST` both present)
+- `LanNetworksResource.get`, `LanNetworksResource.update`, `LanNetworksResource.delete`
+  - SDK path template: `/openapi/v1/sites/{siteId}/lan-networks/{networkId}`
+  - Canonical local-controller path: `/openapi/v1/{omadacId}/sites/{siteId}/lan-networks/{networkId}`
+  - Fixed spec match: exact (`GET`, `PATCH`, and `DELETE` all present)
 
 ## Typed facade reuse pattern
 

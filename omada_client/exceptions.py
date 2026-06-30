@@ -41,6 +41,10 @@ class RadiusProfileNotFoundError(OmadaNotFoundError):
     pass
 
 
+class LanNetworkNotFoundError(OmadaNotFoundError):
+    pass
+
+
 class OmadaValidationError(OmadaAPIError):
     def __init__(
         self,

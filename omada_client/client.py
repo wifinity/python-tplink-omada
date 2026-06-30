@@ -21,6 +21,7 @@ from .resources import (
     APGroupsResource,
     APsResource,
     DevicesResource,
+    LanNetworksResource,
     OLTsResource,
     RadiusProfilesResource,
     SiteServicesResource,
@@ -79,6 +80,7 @@ class OmadaClient:
         self.ap_groups = APGroupsResource(self)
         self.olts = OLTsResource(self)
         self.radius_profiles = RadiusProfilesResource(self)
+        self.lan_networks = LanNetworksResource(self)
 
     def close(self) -> None:
         self._http.close()

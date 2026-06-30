@@ -514,7 +514,7 @@ client.wifi_networks.create(
 Supported `type` values (string `type` maps to Omada `security`):
 
 - `open` (`security=0`; optional `guest_network=True/False` for `guestNetEnable`)
-- `open-isolated` (`security=0`, `guestNetEnable=True`; open SSID with client isolation; wif-services schema name)
+- `open-isolated` (`security=0`, `guestNetEnable=True`; open SSID with client isolation)
 - `aaa` (`security=2`; requires `ent_setting`)
 - `psk` (`security=3`; requires `psk` or `psk_setting`)
 - `ppsk_local` (`security=4`; requires `psk` or `psk_setting` **and** `ppsk_setting`)
@@ -599,6 +599,45 @@ onu_detail = client.olts.get_onu_detail_by_mac(
 # onu_detail["result"]["onuOpticalLinkInformation"]["receivedOpticalPower"]
 # onu_detail["result"]["onuOpticalLinkInformation"]["transmittedOpticalPower"]
 ```
+
+### LAN Networks
+
+Use `client.lan_networks` to manage 802.1Q VLAN definitions (Omada "LAN networks") for a site.
+
+```python
+# List all LAN networks on a site
+networks = client.lan_networks.all(site_id="your-site-id")
+
+# Get a network by Omada network ID string or VLAN integer
+network = client.lan_networks.get(site_id="your-site-id", network_id="your-network-id")
+network = client.lan_networks.get(site_id="your-site-id", vlan_id=98)
+
+# Create a VLAN-type LAN network (DHCP server disabled by default)
+created = client.lan_networks.create(
+    site_id="your-site-id",
+    name="guest",
+    vlan_id=98,
+)
+
+# Update a network — reads current state then merges; pass only the fields you want to change
+client.lan_networks.update(
+    site_id="your-site-id",
+    vlan_id=98,
+    name="guest-renamed",
+)
+
+# Delete a network
+client.lan_networks.delete(site_id="your-site-id", vlan_id=98)
+
+# Build a {vlan_id: network_id} lookup dict — useful when resolving VLAN integers
+# to Omada network ID strings for port-profile or port-override configuration
+lookup = client.lan_networks.vlan_id_to_network_id(site_id="your-site-id")
+```
+
+`get()`, `update()`, and `delete()` each accept exactly one of `network_id` (Omada string ID) or
+`vlan_id` (integer). `update()` fetches the current network before PATCHing — the Omada API
+requires the full object on PATCH, so this approach avoids callers having to supply every field.
+`create()` accepts an optional `dhcp_server_enabled` parameter (default `False`).
 
 ## OpenAPI Spec Issues and Mitigation
 

@@ -3,8 +3,9 @@
 ## What this repo is
 
 Python client for the TP-Link Omada OpenAPI. Dict-first resource wrappers cover
-sites, devices, APs, WLAN groups, Wi-Fi SSIDs, and AP groups. Generated models
-stay internal. Does **not** own workflows or inventory integration.
+sites, devices, APs, switches, WLAN groups, Wi-Fi SSIDs, AP groups, LAN networks,
+RADIUS profiles, OLTs, and site services. Generated models stay internal.
+Does **not** own workflows or inventory integration.
 
 ## Package layout (`omada_client/`)
 
@@ -14,8 +15,8 @@ stay internal. Does **not** own workflows or inventory integration.
 | `omada_client/auth.py` | OAuth2 client credentials (`/openapi/authorize/token`) |
 | `omada_client/config.py` | Client configuration |
 | `omada_client/mac.py` | MAC validation/normalization (`AA-BB-CC-DD-EE-FF`) |
-| `omada_client/exceptions.py` | `WLANGroupNotFoundError`, `DeviceNotFoundError`, etc. |
-| `omada_client/resources/` | Sites, devices, APs, WLAN groups, Wi-Fi networks, AP groups |
+| `omada_client/exceptions.py` | `WLANGroupNotFoundError`, `DeviceNotFoundError`, `LanNetworkNotFoundError`, etc. |
+| `omada_client/resources/` | Sites, devices, APs, switches, WLAN groups, Wi-Fi networks, AP groups, LAN networks, RADIUS profiles, OLTs, site services |
 | `omada_client/generated/models/` | Internal OpenAPI-generated models (not public API) |
 | `omada_client/wifi_payload_utils.py` | SSID create/update payload helpers |
 
