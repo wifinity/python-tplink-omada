@@ -155,7 +155,7 @@ class SwitchesResource:
 
         Calls GET /openapi/v2/.../sites/{siteId}/lan-profiles.
         """
-        url = self.client.api_path(f"/openapi/v1/sites/{site_id}/lan-profiles").replace("/openapi/v1/", "/openapi/v2/")
+        url = self.client.api_path(f"/openapi/v2/sites/{site_id}/lan-profiles")
         response = cast(Dict[str, Any], self.client.get(url, params={"page": 1, "pageSize": 1000}))
         return cast(List[Any], self._extract_items(response))
 
@@ -185,6 +185,96 @@ class SwitchesResource:
                 self.client.api_path(f"/openapi/v1/sites/{site_id}/switches/{normalized}/ports/{port}/profile"),
                 json={"profileId": profile_id},
             )
+
+    def create_port_profile(self, *, site_id: str, profile: dict[str, Any]) -> dict[str, Any]:
+        """Create a LAN port profile from a dict-first profile body.
+
+        POST /openapi/v2/.../sites/{siteId}/lan-profiles with the profile body
+        (a LanProfileSettingOpenApiVO) passed through unchanged — no validation
+        or posture translation happens here. Returns the created identity from
+        ResponseIdVO ({"id": "<newProfileId>"}).
+        """
+        url = self.client.api_path(f"/openapi/v2/sites/{site_id}/lan-profiles")
+        response = cast(Dict[str, Any], self.client.post(url, json=profile))
+        result = response.get("result")
+        if isinstance(result, dict):
+            return cast(Dict[str, Any], result)
+        return response
+
+    def update_port_profile(
+        self,
+        *,
+        site_id: str,
+        profile: dict[str, Any],
+        profile_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Update a LAN port profile with a dict-first profile body.
+
+        When ``profile_id`` is omitted the id is resolved from ``profile['name']``.
+        PATCH /openapi/v2/.../sites/{siteId}/lan-profiles/{profileId} with the
+        profile body passed through unchanged.
+        """
+        if profile_id is None:
+            profile_id = self._resolve_port_profile_id_by_name(site_id=site_id, name=profile.get("name"))
+        url = self.client.api_path(f"/openapi/v2/sites/{site_id}/lan-profiles/{profile_id}")
+        return cast(Dict[str, Any], self.client.patch(url, json=profile))
+
+    def delete_port_profile(
+        self,
+        *,
+        site_id: str,
+        profile_id: str | None = None,
+        name: str | None = None,
+    ) -> dict[str, Any]:
+        """Delete a LAN port profile.
+
+        Exactly one of ``profile_id`` or ``name`` must be supplied; ``name`` is
+        resolved to an id via get_port_profiles.
+        """
+        if (profile_id is None) == (name is None):
+            raise ValueError("Provide exactly one of 'profile_id' or 'name'")
+        if profile_id is None:
+            profile_id = self._resolve_port_profile_id_by_name(site_id=site_id, name=name)
+        url = self.client.api_path(f"/openapi/v2/sites/{site_id}/lan-profiles/{profile_id}")
+        return cast(Dict[str, Any], self.client.delete(url))
+
+    def upsert_port_profile(self, *, site_id: str, profile: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+        """Create-or-update a LAN port profile by name.
+
+        Returns ``(profile_dict, created)``. Resolves ``profile['name']`` against
+        the existing profiles: if a match exists it is PATCHed and returned with
+        ``created=False``; otherwise a new profile is POSTed and returned with
+        ``created=True``.
+
+        Pure create-vs-update dispatch — no drift comparison, no posture
+        translation, no naming policy. Unlike RadiusProfilesResource.upsert (which
+        is create-if-absent only), this updates on conflict.
+        """
+        name = profile.get("name")
+        if not isinstance(name, str) or not name:
+            raise ValueError("profile must include a non-empty 'name'")
+        match = next(
+            (p for p in self.get_port_profiles(site_id=site_id) if isinstance(p, dict) and p.get("name") == name),
+            None,
+        )
+        if match is not None:
+            self.update_port_profile(site_id=site_id, profile_id=match["id"], profile=profile)
+            return match, False
+        created = self.create_port_profile(site_id=site_id, profile=profile)
+        return created, True
+
+    def _resolve_port_profile_id_by_name(self, *, site_id: str, name: Any) -> str:
+        if not isinstance(name, str) or not name:
+            raise ValueError("name must be a non-empty string")
+        matches = [p for p in self.get_port_profiles(site_id=site_id) if isinstance(p, dict) and p.get("name") == name]
+        if not matches:
+            raise ValueError(f"Port profile '{name}' not found in site '{site_id}'")
+        if len(matches) > 1:
+            raise ValueError(f"Multiple port profiles named '{name}' found in site '{site_id}'")
+        profile_id = matches[0].get("id")
+        if not isinstance(profile_id, str) or not profile_id:
+            raise ValueError(f"Port profile '{name}' does not include a valid id")
+        return profile_id
 
     def delete(self, *, site_id: str, mac: str) -> dict[str, Any]:
         normalized_mac = normalize_mac(mac)

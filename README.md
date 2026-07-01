@@ -267,6 +267,35 @@ switch_adopt_status = client.switches.check_adopt(
 forgotten = client.switches.delete(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
 ```
 
+LAN port profiles are managed dict-first (the caller builds the
+`LanProfileSettingOpenApiVO` body; the SDK passes it through unchanged):
+
+```python
+profile = {
+    "name": "role-uplink",
+    "bandWidthCtrlType": 0,
+    "dot1x": 0,
+    "lldpMedEnable": True,
+    "loopbackDetectEnable": True,
+    "poe": 2,
+    "portIsolationEnable": False,
+    "spanningTreeEnable": True,
+}
+
+# Create a profile -> {"id": "<newProfileId>"}
+created = client.switches.create_port_profile(site_id="your-site-id", profile=profile)
+
+# Update by explicit id, or resolve the id from profile["name"] when omitted
+client.switches.update_port_profile(site_id="your-site-id", profile=profile, profile_id=created["id"])
+client.switches.update_port_profile(site_id="your-site-id", profile=profile)
+
+# Create-or-update by name -> (profile_dict, created: bool)
+result, was_created = client.switches.upsert_port_profile(site_id="your-site-id", profile=profile)
+
+# Delete by id or by name (exactly one)
+client.switches.delete_port_profile(site_id="your-site-id", name="role-uplink")
+```
+
 `client.switches` follows the same typed-facade-over-devices pattern as `client.aps`.
 It filters list/lookup calls via `deviceType=\"switch\"` and delegates adopt operations
 to the canonical `client.devices.start_adopt(...)` and `client.devices.check_adopt(...)`.

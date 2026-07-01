@@ -100,3 +100,4 @@
 - Wi-Fi SSID generic multicast (`multicast_config` on create) is recorded in `docs/adr.md` Decision 22; multicast preset dicts live outside the SDK (the caller).
 - Wi-Fi create type `open-isolated` (replaces `guest`) is recorded in `docs/adr.md` Decision 23; aligns with wif-services schema naming.
 - PPSK profile name lookup on `ppsk_local` create is recorded in `docs/adr.md` Decision 24 (`ppsk_profile_name`, not `ppsk_profile_id`).
+- Switch LAN port-profile CRUD (`create_port_profile`, `update_port_profile`, `delete_port_profile`, `upsert_port_profile` on `SwitchesResource`, v2 `/lan-profiles`) is recorded in `docs/adr.md` Decision 31; upsert returns `(dict, created)` and updates on conflict (unlike Decision 28's create-if-absent RADIUS upsert).

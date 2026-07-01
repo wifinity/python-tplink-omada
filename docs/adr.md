@@ -791,3 +791,61 @@ at runtime via `GET /openapi/v2/.../sites/{siteId}/lan-profiles`.
 - `client.switches.get_port_profiles(site_id=...)` → `list[dict]`
 - `client.switches.set_port_profiles(site_id=..., switch_mac=..., port_list=[...], profile_name=str)` — resolves name to ID internally; one PUT per port.
 
+---
+
+## Decision 31 (2026-07): `SwitchesResource` LAN port-profile CRUD
+
+### Context
+
+Decision 30 added read/attach-by-name for LAN port profiles (`get_port_profiles`,
+`set_port_profiles`) but no way to create, update, or delete a profile. A future
+`the workflow layer` site activity (`upsert_switch_port_profiles`) will reconcile
+one Omada LAN port profile per vendor-neutral switch port role, so the SDK needs
+the controller-facing CRUD primitives. The `/lan-profiles` v2 endpoints already
+exist in `spec/fixed/all-fixed.json`:
+
+- POST `/openapi/v2/.../sites/{siteId}/lan-profiles` — body `LanProfileSettingOpenApiVO`,
+  response `ResponseIdVO` (`{"id": ...}` under `result`).
+- PATCH `/openapi/v2/.../sites/{siteId}/lan-profiles/{profileId}` — body
+  `LanProfileSettingOpenApiVO`, response `OperationResponseWithoutResult`.
+- DELETE `/openapi/v2/.../sites/{siteId}/lan-profiles/{profileId}` — response
+  `OperationResponseWithoutResult`.
+
+The activity — not the SDK — owns posture translation, drift comparison, and
+`netstack-` naming. The SDK stays dict-first and passes the profile body through
+unchanged (as `lan_networks.create` does).
+
+The `get_port_profiles` path was previously built as a v1 path then string-hacked
+to v2 via `.replace("/openapi/v1/", "/openapi/v2/")`; `api_path()` already injects
+the omadac id for v2, so the hack was removed and all `/lan-profiles` methods build
+v2 paths directly.
+
+### Decision
+
+- Methods on `SwitchesResource` (keyword-only, dict-first):
+  - `create_port_profile(site_id=..., profile=dict)` → POST; returns the created
+    identity from `ResponseIdVO` (`{"id": ...}`).
+  - `update_port_profile(site_id=..., profile=dict, profile_id=None)` → PATCH.
+    Follows the id-XOR-name resolution convention (Decisions 13/14): when
+    `profile_id` is omitted the id is resolved from `profile["name"]`.
+  - `delete_port_profile(site_id=..., profile_id=None, name=None)` → DELETE;
+    requires exactly one selector; resolves `name` to id.
+  - `upsert_port_profile(site_id=..., profile=dict)` → `tuple[dict, bool]`
+    (`(profile, created)`), matching the `RadiusProfilesResource.upsert` shape
+    (Decision 28). **Unlike Decision 28's upsert, this one updates on conflict**
+    (PATCH if the name exists, else POST) — RADIUS upsert is create-if-absent-only
+    because Omada blocks modifying in-use RADIUS profiles, a constraint that does
+    not apply to LAN port profiles, and the reconcile activity needs update.
+- Identity resolution goes through a private `_resolve_port_profile_id_by_name`
+  helper that exact-matches and raises `ValueError` on not-found/duplicate
+  (mirrors `wifi_networks._lookup_ppsk_profile_id_by_name`), not an inline `next()`.
+
+### Consequences
+
+- `client.switches.create_port_profile(site_id=..., profile={...})` → `{"id": ...}`
+- `client.switches.update_port_profile(site_id=..., profile={...}[, profile_id=...])`
+- `client.switches.delete_port_profile(site_id=..., profile_id=... | name=...)`
+- `client.switches.upsert_port_profile(site_id=..., profile={...})` → `(dict, created)`
+- No posture translation, drift, or naming policy lives in the SDK; the caller
+  builds the `LanProfileSettingOpenApiVO` body.
+

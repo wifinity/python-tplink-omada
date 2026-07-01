@@ -71,9 +71,10 @@ class DummyHttpClient:
         self.requests: list[tuple[str, str, dict]] = []
         self._get_response: dict = {}
         self._post_response: dict = {}
+        self._delete_response: dict = {"errorCode": 0}
 
     def api_path(self, path: str) -> str:
-        return path.replace("/openapi/v1/", "/openapi/v1/OMADACID/")
+        return path.replace("/openapi/v1/", "/openapi/v1/OMADACID/").replace("/openapi/v2/", "/openapi/v2/OMADACID/")
 
     def get(self, url: str, **kwargs) -> dict:
         self.requests.append(("GET", url, kwargs))
@@ -90,6 +91,10 @@ class DummyHttpClient:
     def patch(self, url: str, **kwargs) -> dict:
         self.requests.append(("PATCH", url, kwargs))
         return {"ok": True}
+
+    def delete(self, url: str, **kwargs) -> dict:
+        self.requests.append(("DELETE", url, kwargs))
+        return self._delete_response
 
 
 class DummyClient:
@@ -315,3 +320,169 @@ def test_set_port_profiles_raises_for_unknown_profile() -> None:
         assert False, "Expected ValueError"
     except ValueError as exc:
         assert "NonExistent" in str(exc)
+
+
+_PROFILE_BODY = {
+    "name": "role-uplink",
+    "bandWidthCtrlType": 0,
+    "dot1x": 0,
+    "lldpMedEnable": True,
+    "loopbackDetectEnable": True,
+    "poe": 2,
+    "portIsolationEnable": False,
+    "spanningTreeEnable": True,
+}
+
+
+def test_create_port_profile_posts_v2_and_returns_id() -> None:
+    http = DummyHttpClient()
+    http._post_response = {"result": {"id": "profile-new"}}
+    resource = SwitchesResource(http)
+
+    created = resource.create_port_profile(site_id="site-1", profile=_PROFILE_BODY)
+
+    method, url, kwargs = http.requests[0]
+    assert method == "POST"
+    assert "/openapi/v2/OMADACID/" in url
+    assert "sites/site-1/lan-profiles" in url
+    assert kwargs["json"] == _PROFILE_BODY
+    assert created == {"id": "profile-new"}
+
+
+def test_update_port_profile_patches_v2_with_explicit_id() -> None:
+    http = DummyHttpClient()
+    resource = SwitchesResource(http)
+
+    resource.update_port_profile(site_id="site-1", profile=_PROFILE_BODY, profile_id="profile-7")
+
+    assert not any(m == "GET" for m, _u, _kw in http.requests)
+    method, url, kwargs = http.requests[0]
+    assert method == "PATCH"
+    assert "/openapi/v2/OMADACID/" in url
+    assert "sites/site-1/lan-profiles/profile-7" in url
+    assert kwargs["json"] == _PROFILE_BODY
+
+
+def test_update_port_profile_resolves_id_by_name() -> None:
+    http = DummyHttpClient()
+    http._get_response = {"result": {"data": [{"id": "profile-9", "name": "role-uplink"}]}}
+    resource = SwitchesResource(http)
+
+    resource.update_port_profile(site_id="site-1", profile=_PROFILE_BODY)
+
+    get_requests = [(m, u, kw) for m, u, kw in http.requests if m == "GET"]
+    patch_requests = [(m, u, kw) for m, u, kw in http.requests if m == "PATCH"]
+    assert len(get_requests) == 1
+    assert len(patch_requests) == 1
+    assert "sites/site-1/lan-profiles/profile-9" in patch_requests[0][1]
+    assert patch_requests[0][2]["json"] == _PROFILE_BODY
+
+
+def test_update_port_profile_raises_for_unknown_name() -> None:
+    http = DummyHttpClient()
+    http._get_response = {"result": {"data": [{"id": "profile-other", "name": "role-other"}]}}
+    resource = SwitchesResource(http)
+
+    try:
+        resource.update_port_profile(site_id="site-1", profile=_PROFILE_BODY)
+        assert False, "Expected ValueError"
+    except ValueError as exc:
+        assert "role-uplink" in str(exc)
+    assert not any(m == "PATCH" for m, _u, _kw in http.requests)
+
+
+def test_update_port_profile_raises_for_duplicate_name() -> None:
+    http = DummyHttpClient()
+    http._get_response = {
+        "result": {"data": [{"id": "profile-a", "name": "role-uplink"}, {"id": "profile-b", "name": "role-uplink"}]}
+    }
+    resource = SwitchesResource(http)
+
+    try:
+        resource.update_port_profile(site_id="site-1", profile=_PROFILE_BODY)
+        assert False, "Expected ValueError"
+    except ValueError as exc:
+        assert "Multiple" in str(exc)
+    assert not any(m == "PATCH" for m, _u, _kw in http.requests)
+
+
+def test_delete_port_profile_deletes_v2_by_id() -> None:
+    http = DummyHttpClient()
+    resource = SwitchesResource(http)
+
+    resource.delete_port_profile(site_id="site-1", profile_id="profile-7")
+
+    assert not any(m == "GET" for m, _u, _kw in http.requests)
+    method, url, _kwargs = http.requests[0]
+    assert method == "DELETE"
+    assert "/openapi/v2/OMADACID/" in url
+    assert "sites/site-1/lan-profiles/profile-7" in url
+
+
+def test_delete_port_profile_resolves_id_by_name() -> None:
+    http = DummyHttpClient()
+    http._get_response = {"result": {"data": [{"id": "profile-9", "name": "role-uplink"}]}}
+    resource = SwitchesResource(http)
+
+    resource.delete_port_profile(site_id="site-1", name="role-uplink")
+
+    delete_requests = [(m, u, kw) for m, u, kw in http.requests if m == "DELETE"]
+    assert len(delete_requests) == 1
+    assert "sites/site-1/lan-profiles/profile-9" in delete_requests[0][1]
+
+
+def test_delete_port_profile_requires_exactly_one_selector() -> None:
+    resource = SwitchesResource(DummyHttpClient())
+
+    for kwargs in ({}, {"profile_id": "p", "name": "n"}):
+        try:
+            resource.delete_port_profile(site_id="site-1", **kwargs)
+            assert False, "Expected ValueError"
+        except ValueError as exc:
+            assert "exactly one" in str(exc)
+
+
+def test_upsert_port_profile_updates_on_name_hit() -> None:
+    http = DummyHttpClient()
+    http._get_response = {"result": {"data": [{"id": "profile-9", "name": "role-uplink"}]}}
+    resource = SwitchesResource(http)
+
+    result, created = resource.upsert_port_profile(site_id="site-1", profile=_PROFILE_BODY)
+
+    assert created is False
+    assert result == {"id": "profile-9", "name": "role-uplink"}
+    get_requests = [r for r in http.requests if r[0] == "GET"]
+    patch_requests = [r for r in http.requests if r[0] == "PATCH"]
+    post_requests = [r for r in http.requests if r[0] == "POST"]
+    # exactly one list resolve (upsert's get_port_profiles; update was given the id)
+    assert len(get_requests) == 1
+    assert len(patch_requests) == 1
+    assert len(post_requests) == 0
+    assert "sites/site-1/lan-profiles/profile-9" in patch_requests[0][1]
+
+
+def test_upsert_port_profile_creates_on_name_miss() -> None:
+    http = DummyHttpClient()
+    http._get_response = {"result": {"data": [{"id": "profile-other", "name": "role-other"}]}}
+    http._post_response = {"result": {"id": "profile-new"}}
+    resource = SwitchesResource(http)
+
+    result, created = resource.upsert_port_profile(site_id="site-1", profile=_PROFILE_BODY)
+
+    assert created is True
+    assert result == {"id": "profile-new"}
+    patch_requests = [r for r in http.requests if r[0] == "PATCH"]
+    post_requests = [r for r in http.requests if r[0] == "POST"]
+    assert len(patch_requests) == 0
+    assert len(post_requests) == 1
+    assert post_requests[0][2]["json"] == _PROFILE_BODY
+
+
+def test_upsert_port_profile_requires_name() -> None:
+    resource = SwitchesResource(DummyHttpClient())
+
+    try:
+        resource.upsert_port_profile(site_id="site-1", profile={"poe": 2})
+        assert False, "Expected ValueError"
+    except ValueError as exc:
+        assert "name" in str(exc)
