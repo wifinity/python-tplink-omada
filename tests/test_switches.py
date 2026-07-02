@@ -575,3 +575,53 @@ def test_update_switch_port_rejects_invalid_mac() -> None:
         assert "Invalid MAC address" in str(exc)
 
     assert http.requests == []
+
+
+def test_update_loopback_control_puts_correct_url_with_normalized_mac() -> None:
+    http = DummyHttpClient()
+    resource = SwitchesResource(http)
+
+    settings = {"stp": 2, "priority": 4096}
+    resource.update_loopback_control(
+        site_id="site-1",
+        switch_mac="aa:bb:cc:dd:ee:ff",
+        settings=settings,
+    )
+
+    method, url, kwargs = http.requests[0]
+    assert method == "PUT"
+    assert "/openapi/v1/OMADACID/" in url
+    assert "switches/AA-BB-CC-DD-EE-FF/config/loopback" in url
+    assert kwargs["json"] == settings
+
+
+def test_update_loopback_control_passes_body_through_unchanged() -> None:
+    http = DummyHttpClient()
+    resource = SwitchesResource(http)
+
+    settings = {
+        "stp": 3,
+        "priority": 32768,
+        "forwardDelay": 15,
+        "helloTime": 2,
+        "maxAge": 20,
+        "loopbackDetectEnable": True,
+        "mstp": {"instances": [], "region": {}},
+    }
+    resource.update_loopback_control(site_id="site-1", switch_mac="AA-BB-CC-DD-EE-FF", settings=settings)
+
+    _method, _url, kwargs = http.requests[0]
+    assert kwargs["json"] == settings
+
+
+def test_update_loopback_control_rejects_invalid_mac() -> None:
+    http = DummyHttpClient()
+    resource = SwitchesResource(http)
+
+    try:
+        resource.update_loopback_control(site_id="site-1", switch_mac="bad-mac", settings={"stp": 2})
+        assert False, "Expected ValueError for invalid MAC"
+    except ValueError as exc:
+        assert "Invalid MAC address" in str(exc)
+
+    assert http.requests == []

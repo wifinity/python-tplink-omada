@@ -203,7 +203,7 @@ class SwitchesResource:
         ``OswPortSettingVO`` is the per-port *override* model. Its fields (VLAN
         intent ``nativeNetworkId``/``nativeBridgeVlan``/``tagNetworkIds``/
         ``untagNetworkIds``/``networkTagsSetting``, ``dhcpSnoopEnable``, ``name``,
-        and posture keys such as ``poe``/``dot1x``/``stormCtrl``) take effect only
+        and port-config keys such as ``poe``/``dot1x``/``stormCtrl``) take effect only
         when ``profileOverrideEnable`` is true; otherwise the port inherits from its
         assigned profile. VLAN fields take Omada LAN network IDs (strings), not raw
         VLAN numbers — the caller resolves those (e.g. via
@@ -224,12 +224,52 @@ class SwitchesResource:
             ),
         )
 
+    def update_loopback_control(
+        self,
+        *,
+        site_id: str,
+        switch_mac: str,
+        settings: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Apply device-tier STP / loopback control to one switch.
+
+        PUT /switches/{switchMac}/config/loopback with ``settings`` as the
+        ``SwitchLoopbackControl`` body. The body is passed through verbatim,
+        dict-first: this method does not validate, translate, or default any
+        field. Its fields include:
+
+        - ``stp`` — spanning-tree mode: ``0`` OFF, ``1`` STP, ``2`` RSTP, ``3`` MSTP.
+        - ``priority`` — device-wide bridge priority: an integer 0..61440 divisible
+          by 4096 (the STP root-bridge election weight). This is the only bridge
+          priority in the Omada model that is genuinely device-global; the
+          per-port/per-profile ``spanningTreeSetting.priority`` is unrelated.
+        - ``mstp`` (``OswStpMstpConfigOpenApiVO``) plus timer knobs
+          ``forwardDelay`` / ``helloTime`` / ``maxAge`` / ``maxHops`` /
+          ``txHoldCount`` and ``loopbackDetectEnable``.
+
+        The endpoint is PUT-only (there is no GET twin), so it sets absolute state
+        and is naturally idempotent; the caller does not read-before-write here.
+        Note there is no device-global DHCP-snooping enable in the Omada API — that
+        is per-port (``OswPortSettingVO.dhcpSnoopEnable``) or per-site snoop rules.
+
+        Single-switch only. Returns the raw controller response
+        (``OperationResponseWithoutResult``).
+        """
+        normalized = normalize_mac(switch_mac)
+        return cast(
+            Dict[str, Any],
+            self.client.put(
+                self.client.api_path(f"/openapi/v1/sites/{site_id}/switches/{normalized}/config/loopback"),
+                json=settings,
+            ),
+        )
+
     def create_port_profile(self, *, site_id: str, profile: dict[str, Any]) -> dict[str, Any]:
         """Create a LAN port profile from a dict-first profile body.
 
         POST /openapi/v2/.../sites/{siteId}/lan-profiles with the profile body
         (a LanProfileSettingOpenApiVO) passed through unchanged — no validation
-        or posture translation happens here. Returns the created identity from
+        or value translation happens here. Returns the created identity from
         ResponseIdVO ({"id": "<newProfileId>"}).
         """
         url = self.client.api_path(f"/openapi/v2/sites/{site_id}/lan-profiles")
@@ -284,8 +324,8 @@ class SwitchesResource:
         ``created=False``; otherwise a new profile is POSTed and returned with
         ``created=True``.
 
-        Pure create-vs-update dispatch — no drift comparison, no posture
-        translation, no naming policy. Unlike RadiusProfilesResource.upsert (which
+        Pure create-vs-update dispatch — no diffing, no value translation, no
+        naming policy. Unlike RadiusProfilesResource.upsert (which
         is create-if-absent only), this updates on conflict.
         """
         name = profile.get("name")
