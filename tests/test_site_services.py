@@ -56,13 +56,13 @@ def test_update_snmp_v1v2c_only() -> None:
         site_id="site-1",
         snmpv1v2c_enable=True,
         snmpv3_enable=False,
-        community_string="wifinity-mon",
+        community_string="mon-community",
     )
 
     assert client.patch_path == "/openapi/v1/sites/site-1/setting/service/snmp"
     assert client.patch_json["snmpV1V2CEnable"] is True
     assert client.patch_json["snmpV3Enable"] is False
-    assert client.patch_json["communityString"] == "wifinity-mon"
+    assert client.patch_json["communityString"] == "mon-community"
     assert "username" not in client.patch_json
     assert "password" not in client.patch_json
 

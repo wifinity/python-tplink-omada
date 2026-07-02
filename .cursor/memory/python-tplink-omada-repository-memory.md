@@ -40,7 +40,7 @@
   - Missing-by-name lookups raise `WLANGroupNotFoundError`; duplicate-name and missing-`wlanId` cases raise `ValueError`.
 - Wi-Fi networks (`WiFiNetworksResource`) are site + WLAN-group scoped SSID CRUD on `/wireless-network/wlans/{wlanId}/ssids`.
   - `create(..., type=..., ssid=None, name=None, ...)` requires at least one of `ssid` or `name` (broadcast name); if both, they must match. JSON field is always `name`.
-  - String `type` maps to Omada `security`: `open`/`open-isolated` (0), `aaa` (2), `psk` (3), `ppsk_local` (4), `dpsk` (5). Alias `ppsk-local` → `ppsk_local`. **`psk`** = WPA-Personal (`wpa_basic.json`, `psk=` required); **`ppsk_local`** = corporate PPSK (`wpa.json`, `ppsk_profile_name=`). Cross-type auth kwargs are rejected (`psk=` only on `psk`; `ppsk_profile_name` only on `ppsk_local`). wif-services `dpsk-local-auth` is not the same as `ppsk_local`. `open-isolated` sets `guestNetEnable`; `open` may set `guest_network=True/False`. `hotspot20` is rejected with a clear message.
+  - String `type` maps to Omada `security`: `open`/`open-isolated` (0), `aaa` (2), `psk` (3), `ppsk_local` (4), `dpsk` (5). Alias `ppsk-local` → `ppsk_local`. **`psk`** = WPA-Personal (`wpa_basic.json`, `psk=` required); **`ppsk_local`** = corporate PPSK (`wpa.json`, `ppsk_profile_name=`). Cross-type auth kwargs are rejected (`psk=` only on `psk`; `ppsk_profile_name` only on `ppsk_local`). An external `dpsk-local-auth` type is not the same as `ppsk_local`. `open-isolated` sets `guestNetEnable`; `open` may set `guest_network=True/False`. `hotspot20` is rejected with a clear message.
   - `vlan` sets `vlanId` and Anchor-style `vlanSetting` (Omada create requires both when `vlanEnable`); mutually exclusive with `vlan_setting` dict.
   - `ppsk_profile_name` on `ppsk_local` create resolves Omada id via `GET .../ppsk-profiles` (exact `profileName` match); `radius_profile_name`+`nas_id` for `dpsk` resolves id via `GET .../profiles/radius` (exact `name` match; not with `ppsk_setting`).
   - `pmf_mode` overrides defaults (`2` open/open-isolated, `3` psk/ppsk_local/dpsk); `mac_format` defaults to `2`.
@@ -98,5 +98,5 @@
 - Wi-Fi SSID `filter` / `update_basic_config` and `ssid_detail_to_basic_config_patch` are recorded in `docs/adr.md` Decision 19.
 - Wi-Fi SSID rate control (`rate_control` on create, `update_rate_control`) is recorded in `docs/adr.md` Decision 20; rate-control templates live outside the SDK.
 - Wi-Fi SSID generic multicast (`multicast_config` on create) is recorded in `docs/adr.md` Decision 22; multicast preset dicts live outside the SDK (the caller).
-- Wi-Fi create type `open-isolated` (replaces `guest`) is recorded in `docs/adr.md` Decision 23; aligns with wif-services schema naming.
+- Wi-Fi create type `open-isolated` (replaces `guest`) is recorded in `docs/adr.md` Decision 23.
 - PPSK profile name lookup on `ppsk_local` create is recorded in `docs/adr.md` Decision 24 (`ppsk_profile_name`, not `ppsk_profile_id`).

@@ -296,6 +296,30 @@ result, was_created = client.switches.upsert_port_profile(site_id="your-site-id"
 client.switches.delete_port_profile(site_id="your-site-id", name="role-uplink")
 ```
 
+Per-port config is applied one port at a time with `update_switch_port`. The
+`settings` dict is an `OswPortSettingVO` passed through unchanged (no validation,
+translation, or defaulting). VLAN fields take Omada LAN network IDs — resolve VLAN
+numbers first via `client.lan_networks.vlan_id_to_network_id`. Admin enable/disable
+is managed via the port profile (`set_port_profiles`), not the `disable` field:
+
+```python
+net_ids = client.lan_networks.vlan_id_to_network_id(site_id="your-site-id")
+
+client.switches.update_switch_port(
+    site_id="your-site-id",
+    switch_mac="AA-BB-CC-DD-EE-FF",
+    port=5,
+    settings={
+        "name": "AP-uplink",
+        "nativeNetworkId": net_ids[1],
+        "tagNetworkIds": [net_ids[10], net_ids[20]],
+        "networkTagsSetting": 2,      # 0 Allow All, 1 Block All, 2 Custom
+        "dhcpSnoopEnable": True,      # DHCP-snooping trust
+        "profileOverrideEnable": True,
+    },
+)
+```
+
 `client.switches` follows the same typed-facade-over-devices pattern as `client.aps`.
 It filters list/lookup calls via `deviceType=\"switch\"` and delegates adopt operations
 to the canonical `client.devices.start_adopt(...)` and `client.devices.check_adopt(...)`.

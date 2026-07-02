@@ -486,3 +486,92 @@ def test_upsert_port_profile_requires_name() -> None:
         assert False, "Expected ValueError"
     except ValueError as exc:
         assert "name" in str(exc)
+
+
+def test_update_switch_port_patches_correct_url_with_normalized_mac() -> None:
+    http = DummyHttpClient()
+    resource = SwitchesResource(http)
+
+    settings = {"name": "AP-uplink", "profileId": "profile-1", "profileOverrideEnable": False}
+    resource.update_switch_port(
+        site_id="site-1",
+        switch_mac="aa:bb:cc:dd:ee:ff",
+        port=5,
+        settings=settings,
+    )
+
+    method, url, kwargs = http.requests[0]
+    assert method == "PATCH"
+    assert "/openapi/v1/OMADACID/" in url
+    assert "switches/AA-BB-CC-DD-EE-FF/ports/5" in url
+    assert kwargs["json"] == settings
+
+
+def test_update_switch_port_round_trips_vlan_body_unchanged() -> None:
+    http = DummyHttpClient()
+    resource = SwitchesResource(http)
+
+    settings = {
+        "nativeNetworkId": "net-default",
+        "nativeBridgeVlan": 1,
+        "tagNetworkIds": ["net-10", "net-20"],
+        "untagNetworkIds": ["net-30"],
+        "networkTagsSetting": 2,
+    }
+    resource.update_switch_port(site_id="site-1", switch_mac="AA-BB-CC-DD-EE-FF", port=3, settings=settings)
+
+    method, url, kwargs = http.requests[0]
+    assert method == "PATCH"
+    assert "switches/AA-BB-CC-DD-EE-FF/ports/3" in url
+    assert kwargs["json"] == settings
+
+
+def test_update_switch_port_round_trips_dhcp_snoop_trust() -> None:
+    http = DummyHttpClient()
+    resource = SwitchesResource(http)
+
+    settings = {"dhcpSnoopEnable": True}
+    resource.update_switch_port(site_id="site-1", switch_mac="AA-BB-CC-DD-EE-FF", port=7, settings=settings)
+
+    _method, _url, kwargs = http.requests[0]
+    assert kwargs["json"] == settings
+
+
+def test_update_switch_port_round_trips_profile_attach_and_override() -> None:
+    http = DummyHttpClient()
+    resource = SwitchesResource(http)
+
+    attach = {"profileId": "profile-all", "profileOverrideEnable": False}
+    resource.update_switch_port(site_id="site-1", switch_mac="AA-BB-CC-DD-EE-FF", port=1, settings=attach)
+
+    override = {"profileOverrideEnable": True, "poe": 2, "dot1x": 2, "stormCtrl": {"broadcastEnable": True}}
+    resource.update_switch_port(site_id="site-1", switch_mac="AA-BB-CC-DD-EE-FF", port=2, settings=override)
+
+    assert http.requests[0][2]["json"] == attach
+    assert http.requests[1][2]["json"] == override
+
+
+def test_update_switch_port_passes_arbitrary_fields_through_unchanged() -> None:
+    # `disable` is just another OswPortSettingVO field passed through verbatim;
+    # admin enable/disable is managed via set_port_profiles (Decision 30), not here.
+    http = DummyHttpClient()
+    resource = SwitchesResource(http)
+
+    settings = {"disable": True, "name": "spare", "profileOverrideEnable": True}
+    resource.update_switch_port(site_id="site-1", switch_mac="AA-BB-CC-DD-EE-FF", port=9, settings=settings)
+
+    _method, _url, kwargs = http.requests[0]
+    assert kwargs["json"] == settings
+
+
+def test_update_switch_port_rejects_invalid_mac() -> None:
+    http = DummyHttpClient()
+    resource = SwitchesResource(http)
+
+    try:
+        resource.update_switch_port(site_id="site-1", switch_mac="bad-mac", port=1, settings={"name": "x"})
+        assert False, "Expected ValueError for invalid MAC"
+    except ValueError as exc:
+        assert "Invalid MAC address" in str(exc)
+
+    assert http.requests == []

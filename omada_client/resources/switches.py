@@ -186,6 +186,44 @@ class SwitchesResource:
                 json={"profileId": profile_id},
             )
 
+    def update_switch_port(
+        self,
+        *,
+        site_id: str,
+        switch_mac: str,
+        port: int,
+        settings: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Apply per-port config to one switch port.
+
+        PATCH /switches/{switchMac}/ports/{port} with ``settings`` as the
+        ``OswPortSettingVO`` body. The body is passed through verbatim, dict-first:
+        this method does not validate, translate, or default any field.
+
+        ``OswPortSettingVO`` is the per-port *override* model. Its fields (VLAN
+        intent ``nativeNetworkId``/``nativeBridgeVlan``/``tagNetworkIds``/
+        ``untagNetworkIds``/``networkTagsSetting``, ``dhcpSnoopEnable``, ``name``,
+        and posture keys such as ``poe``/``dot1x``/``stormCtrl``) take effect only
+        when ``profileOverrideEnable`` is true; otherwise the port inherits from its
+        assigned profile. VLAN fields take Omada LAN network IDs (strings), not raw
+        VLAN numbers — the caller resolves those (e.g. via
+        ``client.lan_networks.vlan_id_to_network_id``).
+
+        Admin enable/disable is managed via the port profile (see
+        ``set_port_profiles``), not the ``disable`` field here.
+
+        Single-port only; callers loop per port and do their own read-before-write
+        diff. Returns the raw controller response (``OperationResponseString``).
+        """
+        normalized = normalize_mac(switch_mac)
+        return cast(
+            Dict[str, Any],
+            self.client.patch(
+                self.client.api_path(f"/openapi/v1/sites/{site_id}/switches/{normalized}/ports/{port}"),
+                json=settings,
+            ),
+        )
+
     def create_port_profile(self, *, site_id: str, profile: dict[str, Any]) -> dict[str, Any]:
         """Create a LAN port profile from a dict-first profile body.
 

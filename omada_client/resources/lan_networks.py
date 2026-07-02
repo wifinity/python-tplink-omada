@@ -10,9 +10,9 @@ integers to Omada network IDs (e.g. the port-config workflow).
 
 DHCP device:
     ``create()`` accepts ``dhcp_device`` to control which device serves DHCP.
-    Default is ``"external"`` (no controller DHCP server — Wifinity provides
-    DHCP externally).  The ``upsert_site_vlans`` workflow activity relies on
-    this default and does not pass an explicit value.
+    Default is ``"external"`` (no controller DHCP server — DHCP is provided by
+    an external server).  Callers relying on external DHCP can use this default
+    without passing an explicit value.
 
     Note: ``create()`` uses the ``POST /networks/confirm`` endpoint, which does
     NOT auto-create a LAN profile (port profile) as a side effect.  The

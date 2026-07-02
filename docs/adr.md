@@ -798,10 +798,9 @@ at runtime via `GET /openapi/v2/.../sites/{siteId}/lan-profiles`.
 ### Context
 
 Decision 30 added read/attach-by-name for LAN port profiles (`get_port_profiles`,
-`set_port_profiles`) but no way to create, update, or delete a profile. A future
-`the workflow layer` site activity (`upsert_switch_port_profiles`) will reconcile
-one Omada LAN port profile per vendor-neutral switch port role, so the SDK needs
-the controller-facing CRUD primitives. The `/lan-profiles` v2 endpoints already
+`set_port_profiles`) but no way to create, update, or delete a profile. A downstream
+reconcile workflow will manage one Omada LAN port profile per vendor-neutral switch
+port role, so the SDK needs the controller-facing CRUD primitives. The `/lan-profiles` v2 endpoints already
 exist in `spec/fixed/all-fixed.json`:
 
 - POST `/openapi/v2/.../sites/{siteId}/lan-profiles` — body `LanProfileSettingOpenApiVO`,
@@ -811,8 +810,8 @@ exist in `spec/fixed/all-fixed.json`:
 - DELETE `/openapi/v2/.../sites/{siteId}/lan-profiles/{profileId}` — response
   `OperationResponseWithoutResult`.
 
-The activity — not the SDK — owns posture translation, drift comparison, and
-`netstack-` naming. The SDK stays dict-first and passes the profile body through
+The caller — not the SDK — owns posture translation, drift comparison, and profile
+naming policy. The SDK stays dict-first and passes the profile body through
 unchanged (as `lan_networks.create` does).
 
 The `get_port_profiles` path was previously built as a v1 path then string-hacked
@@ -835,7 +834,7 @@ v2 paths directly.
     (Decision 28). **Unlike Decision 28's upsert, this one updates on conflict**
     (PATCH if the name exists, else POST) — RADIUS upsert is create-if-absent-only
     because Omada blocks modifying in-use RADIUS profiles, a constraint that does
-    not apply to LAN port profiles, and the reconcile activity needs update.
+    not apply to LAN port profiles, and the reconcile workflow needs update.
 - Identity resolution goes through a private `_resolve_port_profile_id_by_name`
   helper that exact-matches and raises `ValueError` on not-found/duplicate
   (mirrors `wifi_networks._lookup_ppsk_profile_id_by_name`), not an inline `next()`.
@@ -848,4 +847,68 @@ v2 paths directly.
 - `client.switches.upsert_port_profile(site_id=..., profile={...})` → `(dict, created)`
 - No posture translation, drift, or naming policy lives in the SDK; the caller
   builds the `LanProfileSettingOpenApiVO` body.
+
+---
+
+## Decision 32 (2026-07): `SwitchesResource.update_switch_port` — per-port config PATCH
+
+### Context
+
+A downstream device-config workflow needs to push per-port switch settings (VLAN
+membership, DHCP-snooping trust, port name, profile attach/override, posture). Decision 30 added port reads (`get_ports`), renames
+(`set_ports_name`), and profile attach-by-name (`set_port_profiles`), but no general
+per-port config setter. The endpoint exists in `spec/fixed/all-fixed.json`:
+
+- PATCH `/openapi/v1/.../sites/{siteId}/switches/{switchMac}/ports/{port}` — body
+  `OswPortSettingVO`, response `OperationResponseString`.
+
+`OswPortSettingVO` is the per-port **override** model (52 fields, none required):
+`profileId` / `profileOverrideEnable`, VLAN intent (`nativeNetworkId`,
+`nativeBridgeVlan`, `tagNetworkIds`, `untagNetworkIds`, `networkTagsSetting`),
+`dhcpSnoopEnable`, `name`, and posture keys (`dot1x`, `poe`, `stormCtrl`,
+`trustMode`, `spanningTreeSetting`, …).
+
+**Admin state stays profile-based (Decision 30), not `disable`.** A port inherits its
+state — including enabled/disabled — from its assigned profile when
+`profileOverrideEnable=false`; the `OswPortSettingVO` per-port fields (including
+`disable`) apply only when `profileOverrideEnable=true`. This explains Decision 30's
+finding that `disable` on `/multi-ports/config` "returns success but has no effect":
+those ports had override off, so the profile won. Enable/disable therefore remains on
+`set_port_profiles` ("All" ↔ "Disable"); `disable` here is just one more pass-through
+field, not the admin toggle.
+
+### Decision
+
+- Add `SwitchesResource.update_switch_port(*, site_id, switch_mac, port, settings)`
+  (keyword-only, dict-first): normalize `switch_mac`, PATCH the per-port endpoint with
+  `settings` as the JSON body, return the raw controller response
+  (`OperationResponseString`) — same raw-response convention as `lan_networks.update`
+  and `set_ports_name`.
+- The body is passed through **verbatim**: no validation, translation, defaulting, or
+  VLAN-number→network-ID resolution. VLAN fields take Omada LAN network IDs (strings);
+  callers resolve them via `client.lan_networks.vlan_id_to_network_id`.
+- **Single-port only** — no batching or diffing. The caller loops per port and does
+  its own read-before-write diff.
+- The optional `PUT .../ports/{port}/status` and `PUT .../ports/{port}/profile-override`
+  wrappers are **not** added: `profileOverrideEnable` already rides in the PATCH body,
+  admin state stays on `set_port_profiles`, and the single-port `.../status` toggle is
+  the twin of the ineffective `/multi-ports/status` from Decision 30.
+
+### Consequences
+
+- `client.switches.update_switch_port(site_id=..., switch_mac=..., port=..., settings={...})`
+  → raw `OperationResponseString`.
+- Posture→Omada mapping, drift comparison, VLAN resolution, and the "All"/"Disable"
+  role-profile migration live in the calling workflow layer, not the SDK.
+- **Verified against a live controller (SG2210XMP-M2):** despite the HTTP method being
+  PATCH, this endpoint is **not** a sparse patch — a partial body (e.g. `{"name": ...}`)
+  is rejected with Omada "General error". The caller must send a **full
+  `OswPortSettingVO`**, built by reading the current port (`get_ports`) and filtering to
+  the writable `OswPortSettingVO` keys; the raw `OswPortVO` read also carries read-only
+  fields (`id`, `standardPort`, `portStatus`, `portCap`, `portSpeedCap`, `profileName`,
+  …) that must be dropped before PATCH. This read-before-write merge is the caller's
+  responsibility — the SDK stays a verbatim pass-through. Confirmed round-trips: `name`
+  change and `profileOverrideEnable` flip both persisted; `poe` config is not surfaced in
+  the `OswPortVO` read (only operational `portStatus.poe`), which is a read-model gap, not
+  a write failure.
 
