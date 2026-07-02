@@ -5,7 +5,8 @@
 Python client for the TP-Link Omada OpenAPI. Dict-first resource wrappers cover
 sites, devices, APs, switches, WLAN groups, Wi-Fi SSIDs, AP groups, LAN networks,
 RADIUS profiles, OLTs, and site services. Generated models stay internal.
-Does **not** own workflows or inventory integration.
+Does **not** own higher-level orchestration workflows or external system
+integrations — it is a thin controller-facing client only.
 
 ## Package layout (`omada_client/`)
 

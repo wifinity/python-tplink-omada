@@ -73,7 +73,7 @@ def _rate_limit_profiles_response(*, profile_id: str = "p-default", name: str = 
 
 def _ppsk_profiles_response(
     *,
-    profile_name: str = "Services_PPSK_Profile",
+    profile_name: str = "My_PPSK_Profile",
     profile_id: str = "ppsk-profile-id",
 ) -> dict[str, object]:
     return {"result": {"data": [{"profileName": profile_name, "id": profile_id}]}}
@@ -81,7 +81,7 @@ def _ppsk_profiles_response(
 
 def _radius_profiles_response(
     *,
-    profile_name: str = "Home Networking Wi-Fi",
+    profile_name: str = "My RADIUS Profile",
     profile_id: str = "radius-profile-id",
 ) -> dict[str, object]:
     return {"result": {"data": [{"name": profile_name, "radiusProfileId": profile_id}]}}
@@ -91,7 +91,7 @@ def _wire_dpsk_create(
     client: DummyClient,
     *,
     ssid_id: str | None = "s-new",
-    profile_name: str = "Home Networking Wi-Fi",
+    profile_name: str = "My RADIUS Profile",
     profile_id: str = "radius-profile-id",
     rate_limit_profile_id: str = "p-default",
 ) -> None:
@@ -110,7 +110,7 @@ def _wire_ppsk_local_create(
     client: DummyClient,
     *,
     ssid_id: str | None = "s-new",
-    profile_name: str = "Services_PPSK_Profile",
+    profile_name: str = "My_PPSK_Profile",
     profile_id: str = "ppsk-profile-id",
     rate_limit_profile_id: str = "p-default",
 ) -> None:
@@ -314,7 +314,7 @@ def test_wifi_create_psk_rejects_ppsk_profile_name() -> None:
             type="psk",
             ssid="WPA",
             psk="secret",
-            ppsk_profile_name="Services_PPSK_Profile",
+            ppsk_profile_name="My_PPSK_Profile",
         )
 
 
@@ -355,7 +355,7 @@ def test_wifi_create_ppsk_local_hyphen_alias() -> None:
         type="ppsk-local",
         ssid="Corporate",
         vlan=999,
-        ppsk_profile_name="Services_PPSK_Profile",
+        ppsk_profile_name="My_PPSK_Profile",
     )
 
     sent = cast(Dict[str, object], client.post_calls[0][1])
@@ -506,7 +506,7 @@ def test_wifi_create_ppsk_local_from_profile_name() -> None:
         type="ppsk_local",
         ssid="Corporate",
         vlan=999,
-        ppsk_profile_name="Services_PPSK_Profile",
+        ppsk_profile_name="My_PPSK_Profile",
     )
 
     assert client.get_calls[0][0].endswith("/sites/s1/ppsk-profiles")
@@ -536,7 +536,7 @@ def test_wifi_create_ppsk_local_fails_when_profile_name_missing() -> None:
             wlan_group="w1",
             type="ppsk_local",
             ssid="Corporate",
-            ppsk_profile_name="Services_PPSK_Profile",
+            ppsk_profile_name="My_PPSK_Profile",
         )
 
 
@@ -546,8 +546,8 @@ def test_wifi_create_ppsk_local_fails_on_duplicate_profile_name() -> None:
     client.get_response = {
         "result": {
             "data": [
-                {"profileName": "Services_PPSK_Profile", "id": "p1"},
-                {"profileName": "Services_PPSK_Profile", "id": "p2"},
+                {"profileName": "My_PPSK_Profile", "id": "p1"},
+                {"profileName": "My_PPSK_Profile", "id": "p2"},
             ]
         }
     }
@@ -559,7 +559,7 @@ def test_wifi_create_ppsk_local_fails_on_duplicate_profile_name() -> None:
             wlan_group="w1",
             type="ppsk_local",
             ssid="Corporate",
-            ppsk_profile_name="Services_PPSK_Profile",
+            ppsk_profile_name="My_PPSK_Profile",
         )
 
 
@@ -569,7 +569,7 @@ def test_wifi_lookup_radius_profile_by_name() -> None:
         "result": {
             "data": [
                 {"name": "Other RADIUS", "radiusProfileId": "r-other"},
-                {"name": "Home Networking Wi-Fi", "radiusProfileId": "radius-profile-id"},
+                {"name": "My RADIUS Profile", "radiusProfileId": "radius-profile-id"},
             ]
         }
     }
@@ -577,7 +577,7 @@ def test_wifi_lookup_radius_profile_by_name() -> None:
 
     profile_id = resource._lookup_radius_profile_id_by_name(
         site_id="s1",
-        profile_name="Home Networking Wi-Fi",
+        profile_name="My RADIUS Profile",
     )
 
     assert profile_id == "radius-profile-id"
@@ -588,8 +588,8 @@ def test_wifi_lookup_radius_profile_duplicate_names_raises() -> None:
     client.get_response = {
         "result": {
             "data": [
-                {"name": "Home Networking Wi-Fi", "radiusProfileId": "r1"},
-                {"name": "Home Networking Wi-Fi", "radiusProfileId": "r2"},
+                {"name": "My RADIUS Profile", "radiusProfileId": "r1"},
+                {"name": "My RADIUS Profile", "radiusProfileId": "r2"},
             ]
         }
     }
@@ -598,7 +598,7 @@ def test_wifi_lookup_radius_profile_duplicate_names_raises() -> None:
     with pytest.raises(ValueError, match="Multiple RADIUS profiles named"):
         resource._lookup_radius_profile_id_by_name(
             site_id="s1",
-            profile_name="Home Networking Wi-Fi",
+            profile_name="My RADIUS Profile",
         )
 
 
@@ -614,7 +614,7 @@ def test_wifi_create_dpsk_from_radius_profile_name() -> None:
         type="dpsk",
         ssid="Resident",
         vlan=999,
-        radius_profile_name="Home Networking Wi-Fi",
+        radius_profile_name="My RADIUS Profile",
         nas_id="SITECODE",
     )
 
@@ -682,7 +682,7 @@ def test_wifi_create_ppsk_local_multicast_config_patches() -> None:
         type="ppsk_local",
         ssid="Corporate",
         vlan=999,
-        ppsk_profile_name="Services_PPSK_Profile",
+        ppsk_profile_name="My_PPSK_Profile",
         multicast_config=_SECURED_MULTICAST,
     )
 
@@ -1019,7 +1019,7 @@ def test_wifi_create_rejects_profile_id_with_ppsk_setting() -> None:
             wlan_group="w1",
             type="ppsk_local",
             ssid="A",
-            ppsk_profile_name="Services_PPSK_Profile",
+            ppsk_profile_name="My_PPSK_Profile",
             ppsk_setting={"ppskProfileId": "p2"},
         )
 
@@ -1035,7 +1035,7 @@ def test_wifi_create_dpsk_requires_nas_id_with_radius_profile() -> None:
             wlan_group="w1",
             type="dpsk",
             ssid="A",
-            radius_profile_name="Home Networking Wi-Fi",
+            radius_profile_name="My RADIUS Profile",
         )
 
 
@@ -1096,7 +1096,7 @@ def test_wifi_create_requires_type_specific_settings() -> None:
         resource.create(site_id="s1", wlan_group="w1", type="ppsk_local", ssid="A", psk="x")
 
 
-def test_wifi_create_name_only_matches_ruckus_style() -> None:
+def test_wifi_create_name_only_string_typed() -> None:
     client = DummyClient()
     _wire_wlan_group(client, group_id="w1", group_name="Corp")
     _wire_post_create(client)

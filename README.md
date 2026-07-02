@@ -434,7 +434,7 @@ created_dpsk_network = client.wifi_networks.create(
     type="dpsk",
     ssid="Resident",
     vlan=999,
-    radius_profile_name="Home Networking Wi-Fi",
+    radius_profile_name="My RADIUS Profile",
     nas_id="SITECODE",
 )
 
@@ -445,7 +445,7 @@ created_ppsk_local = client.wifi_networks.create(
     type="ppsk_local",
     ssid="Corporate",
     vlan=999,
-    ppsk_profile_name="Services_PPSK_Profile",
+    ppsk_profile_name="My_PPSK_Profile",
 )
 
 # Multicast: flat PATCH fields (not nested under multiCast). Caller owns preset dicts.
@@ -485,7 +485,7 @@ created_ppsk_with_multicast = client.wifi_networks.create(
     type="ppsk_local",
     ssid="Corporate",
     vlan=999,
-    ppsk_profile_name="Services_PPSK_Profile",
+    ppsk_profile_name="My_PPSK_Profile",
     multicast_config=SECURED_MULTICAST,
 )
 

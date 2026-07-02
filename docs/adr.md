@@ -443,11 +443,11 @@ address, which makes direct “MAC → optics” workflows awkward for automatio
 
 ---
 
-## Decision 18 (2026-05): Wi-Fi SSID create — Ruckus-like types, broadcast name, VLAN, clone helper
+## Decision 18 (2026-05): Wi-Fi SSID create — string-typed discriminators, broadcast name, VLAN, clone helper
 
 ### Context
 Omada `CreateSsidOpenApiVO` uses numeric `security` (0 none, 2 WPA-Enterprise, 3 WPA-Personal, 4 PPSK without RADIUS,
-5 PPSK with RADIUS). Callers migrating from sibling clients (for example Ruckus One) expect string `type` discriminators,
+5 PPSK with RADIUS). Callers coming from other cross-vendor WLAN clients expect string `type` discriminators,
 optional `name` alongside `ssid`, guest-style open SSIDs, PPSK-without-RADIUS (`security=4`), and VLAN shapes that match
 the controller (`vlanSetting` vs plain `vlanId`). GET SSID detail payloads are a superset of create fields.
 
@@ -456,14 +456,14 @@ the controller (`vlanSetting` vs plain `vlanId`). GET SSID detail payloads are a
   - `ssid` and `name` are both optional but **at least one required**; if both are set they must be identical (broadcast SSID string maps to JSON `name`).
   - `vlan_setting` accepts Omada `vlanSetting` object; mutually exclusive with the integer `vlan` parameter.
   - `guest_network` applies to `type="open"` only: when `True`/`False`, sets `guestNetEnable`; when omitted, leaves default from payload builder.
-  - `type="open-isolated"` is sugar for open SSID with `guestNetEnable=True` (`security=0`), not Hotspot 2.0 / captive portal parity with Ruckus `hotspot20`.
+  - `type="open-isolated"` is sugar for open SSID with `guestNetEnable=True` (`security=0`), not Hotspot 2.0 / captive portal parity with a `hotspot20` type.
   - `type="ppsk_local"` maps to `security=4` and requires both `psk_setting` or `psk` **and** `ppsk_setting`.
   - `type="dpsk"` remains `security=5` (PPSK with RADIUS) and requires `ppsk_setting`.
   - `type="hotspot20"` remains unsupported with an explicit error directing callers to future HotspotV2 work or raw HTTP.
 - Export `strip_ssid_detail_for_create` from `omada_client` to trim GET detail dicts to `CreateSsidOpenApiVO` keys before merge/create.
 
 ### Consequences
-- Automation can mirror Ruckus-style `create(name=..., type=..., ...)` call sites where `name` is the SSID string.
+- Automation can use string-typed `create(name=..., type=..., ...)` call sites where `name` is the SSID string.
 - PPSK-without-RADIUS and guest-style open networks are first-class without dumping full payloads for every field.
 - Callers cloning from GET responses should use `strip_ssid_detail_for_create` then override secrets/ids before POST.
 
@@ -472,7 +472,7 @@ the controller (`vlanSetting` vs plain `vlanId`). GET SSID detail payloads are a
 ## Decision 19 (2026-05): Wi-Fi SSID `filter` and `update_basic_config`
 
 ### Context
-Sibling clients (for example Ruckus One) document `wifi_networks.filter(...)`, `wifi_networks.update(id, {...})`,
+Other cross-vendor WLAN clients document `wifi_networks.filter(...)`, `wifi_networks.update(id, {...})`,
 and a linear list/get/create/delete story. Omada SSIDs remain nested under a site and WLAN group, and updates use
 PATCH `.../ssids/{ssidId}/update-basic-config` with `UpdateSsidBasicConfigOpenApiVO` rather than a single PUT replace.
 
@@ -486,14 +486,14 @@ PATCH `.../ssids/{ssidId}/update-basic-config` with `UpdateSsidBasicConfigOpenAp
 - Add `WiFiNetworksResource.update_basic_config(*, site_id, wlan_group, id|name, network_data=None, **kwargs)`:
   - `get(...)` current detail, project to `UpdateSsidBasicConfigOpenApiVO` keys, merge `network_data` then `kwargs`,
     validate required basic-config fields, PATCH `update-basic-config`.
-  - Map override key `ssid` to `name` when callers mirror Ruckus `{"ssid": "..."}` payloads.
+  - Map override key `ssid` to `name` when callers mirror `{"ssid": "..."}` payloads from other clients.
 - Export pure helper `ssid_detail_to_basic_config_patch` from `omada_client` for the projection + merge + validation
   step without repeating allowlists at call sites.
 - Do **not** fold other SSID PATCH endpoints (rate limit, schedule, HotspotV2, …) into this method; callers use raw
   `client.patch` if they need those surfaces.
 
 ### Consequences
-- README examples can follow the same narrative order as Ruckus (`all` / `get` / `filter` / `create` / `update` / `delete`)
+- README examples can follow a familiar cross-vendor narrative order (`all` / `get` / `filter` / `create` / `update` / `delete`)
   while staying honest about Omada path and merge semantics.
 - Callers must not assume `update_basic_config` is a partial no-merge PATCH; missing required fields after merge raise
   a clear error pointing to incomplete GET detail or overrides.
@@ -517,14 +517,14 @@ the `rateControl` key in GET detail is not the PATCH body.
     `ssidId` and PATCH `update-rate-control` with the same dict.
   - Valid for all supported `type` values.
 - **Do not** add `build_rate_control_setting()` or export a default rate-control template from `omada_client`;
-  orchestration packs and other callers own the constant.
+  callers own the constant.
 - Out of scope (Decision 20): rate **limit** profiles (`update-rate-limit`), bool shortcut (`rate_control=True`), merging
   partial dicts from GET detail.
 
 ### Consequences
 - Post-create rate control matches the optional `multicast_config` POST-then-PATCH pattern (Decision 22).
 - Callers must not pass GET-nested `rateControl` wrappers; the PATCH body is flat.
-- Pack shims pass `rate_control=RATE_CONTROL` into `create` or call `update_rate_control` on existing SSIDs.
+- Callers pass `rate_control=RATE_CONTROL` into `create` or call `update_rate_control` on existing SSIDs.
 
 ---
 
@@ -534,8 +534,8 @@ the `rateControl` key in GET detail is not the PATCH body.
 GET SSID detail includes `clientRateLimit` and `ssidRateLimit` with a site `profileId` and `customSetting` limits disabled
 Create does not set rate limits; Omada uses PATCH `update-rate-limit` with
 `UpdateSsidRateLimitOpenApiVO` (nested `clientRateLimit` / `ssidRateLimit`, unlike flat rate **control** PATCH).
-New SSIDs otherwise only expose `customSetting` without a profile until configured. Callers (orchestration,
-inventory-driven automation) know the Omada **profile name** (e.g. `Default`) but not the opaque `profileId`.
+New SSIDs otherwise only expose `customSetting` without a profile until configured. Callers know the
+Omada **profile name** (e.g. `Default`) but not the opaque `profileId`.
 
 ### Decision
 - Add `WiFiNetworksResource.update_rate_limit(*, site_id, wlan_group, id|name, rate_limit_profile_name)`:
@@ -546,7 +546,7 @@ inventory-driven automation) know the Omada **profile name** (e.g. `Default`) bu
 - Add optional `rate_limit_profile_name: str | None = None` on `create(...)`:
   - When provided, after POST resolve `ssidId` and PATCH `update-rate-limit` (after optional multicast and
     rate-control PATCHes). When omitted, **no** rate-limit GET or PATCH is performed.
-- No SDK-exported default rate-limit template dict (callers/stackstorm own constants); helper `_build_rate_limit_profile_body` is structural only.
+- No SDK-exported default rate-limit template dict (callers own constants); helper `_build_rate_limit_profile_body` is structural only.
 
 ### Consequences
 - Rate-limit is opt-in, consistent with `multicast_config` and `rate_control` (Decisions 20/22): a plain
@@ -572,7 +572,7 @@ secured SSIDs (for example `ppsk_local`) left `arpCastEnable` false unless calle
   - Reject nested wrapper key `multiCast` with an actionable error (PATCH body is flat, not GET-shaped).
 - Require `multicast_config` on `update_multicast_config(...)` (no default guest preset; param name matches `create()`).
 - **Remove** `guest_multicast_filter` from `create()` and **remove** `build_guest_multicast_setting()` from the SDK.
-- **Do not** add SDK multicast preset builders; orchestration pack and README document `GUEST_MULTICAST` / `SECURED_MULTICAST`
+- **Do not** add SDK multicast preset builders; callers and the README document `GUEST_MULTICAST` / `SECURED_MULTICAST`
   dicts.
 
 ### Consequences
@@ -586,8 +586,8 @@ secured SSIDs (for example `ppsk_local`) left `arpCastEnable` false unless calle
 
 ### Context
 `type="guest"` on `WiFiNetworksResource.create()` mapped to open + `guestNetEnable=True` (client isolation), which
-collided with Omada “guest” terminology and diverged from the cross-vendor automation schema (`open-isolated` in
-orchestration / Ruckus automation).
+collided with Omada “guest” terminology and diverged from the cross-vendor automation schema (which uses
+`open-isolated`).
 
 ### Decision
 - Replace supported create type `guest` with `open-isolated` (same Omada payload: `security=0`, default `guestNetEnable=True`).
@@ -602,8 +602,8 @@ orchestration / Ruckus automation).
 ## Decision 24 (2026-05): PPSK profile lookup by name on `ppsk_local` create
 
 ### Context
-`type="ppsk_local"` create requires a PPSK profile id in `ppskSetting.ppskProfileId`. Callers (orchestration, inventory-driven
-automation) know the Omada **profile name** (e.g. `Services_PPSK_Profile`) but not the opaque id.
+`type="ppsk_local"` create requires a PPSK profile id in `ppskSetting.ppskProfileId`. Callers know the
+Omada **profile name** (e.g. `My_PPSK_Profile`) but not the opaque id.
 
 ### Decision
 - Replace `ppsk_profile_id` on `WiFiNetworksResource.create()` with **`ppsk_profile_name`** (breaking; no dual mode).
@@ -622,8 +622,8 @@ automation) know the Omada **profile name** (e.g. `Services_PPSK_Profile`) but n
 ## Decision 25 (2026-05): RADIUS profile lookup by name on `dpsk` create
 
 ### Context
-`type="dpsk"` create requires a RADIUS profile id in `ppskSetting.radiusProfileId`. Callers (orchestration, inventory-driven
-automation) know the Omada **profile name** (e.g. `Home Networking Wi-Fi`) but not the opaque id. Decision 24 left RADIUS
+`type="dpsk"` create requires a RADIUS profile id in `ppskSetting.radiusProfileId`. Callers know the
+Omada **profile name** (e.g. `My RADIUS Profile`) but not the opaque id. Decision 24 left RADIUS
 lookup out of scope.
 
 ### Decision
@@ -798,9 +798,8 @@ at runtime via `GET /openapi/v2/.../sites/{siteId}/lan-profiles`.
 ### Context
 
 Decision 30 added read/attach-by-name for LAN port profiles (`get_port_profiles`,
-`set_port_profiles`) but no way to create, update, or delete a profile. A downstream
-reconcile workflow will manage one Omada LAN port profile per vendor-neutral switch
-port role, so the SDK needs the controller-facing CRUD primitives. The `/lan-profiles` v2 endpoints already
+`set_port_profiles`) but no way to create, update, or delete a profile. Callers that
+manage LAN port profiles need the controller-facing CRUD primitives. The `/lan-profiles` v2 endpoints already
 exist in `spec/fixed/all-fixed.json`:
 
 - POST `/openapi/v2/.../sites/{siteId}/lan-profiles` — body `LanProfileSettingOpenApiVO`,
@@ -810,7 +809,7 @@ exist in `spec/fixed/all-fixed.json`:
 - DELETE `/openapi/v2/.../sites/{siteId}/lan-profiles/{profileId}` — response
   `OperationResponseWithoutResult`.
 
-The caller — not the SDK — owns posture translation, drift comparison, and profile
+The caller — not the SDK — owns any value translation, diffing, and profile
 naming policy. The SDK stays dict-first and passes the profile body through
 unchanged (as `lan_networks.create` does).
 
@@ -834,7 +833,7 @@ v2 paths directly.
     (Decision 28). **Unlike Decision 28's upsert, this one updates on conflict**
     (PATCH if the name exists, else POST) — RADIUS upsert is create-if-absent-only
     because Omada blocks modifying in-use RADIUS profiles, a constraint that does
-    not apply to LAN port profiles, and the reconcile workflow needs update.
+    not apply to LAN port profiles, where callers need update-on-conflict.
 - Identity resolution goes through a private `_resolve_port_profile_id_by_name`
   helper that exact-matches and raises `ValueError` on not-found/duplicate
   (mirrors `wifi_networks._lookup_ppsk_profile_id_by_name`), not an inline `next()`.
@@ -845,7 +844,7 @@ v2 paths directly.
 - `client.switches.update_port_profile(site_id=..., profile={...}[, profile_id=...])`
 - `client.switches.delete_port_profile(site_id=..., profile_id=... | name=...)`
 - `client.switches.upsert_port_profile(site_id=..., profile={...})` → `(dict, created)`
-- No posture translation, drift, or naming policy lives in the SDK; the caller
+- No value translation, diffing, or naming policy lives in the SDK; the caller
   builds the `LanProfileSettingOpenApiVO` body.
 
 ---
@@ -854,8 +853,8 @@ v2 paths directly.
 
 ### Context
 
-A downstream device-config workflow needs to push per-port switch settings (VLAN
-membership, DHCP-snooping trust, port name, profile attach/override, posture). Decision 30 added port reads (`get_ports`), renames
+Callers need to push per-port switch settings (VLAN
+membership, DHCP-snooping trust, port name, profile attach/override, and other port config). Decision 30 added port reads (`get_ports`), renames
 (`set_ports_name`), and profile attach-by-name (`set_port_profiles`), but no general
 per-port config setter. The endpoint exists in `spec/fixed/all-fixed.json`:
 
@@ -865,7 +864,7 @@ per-port config setter. The endpoint exists in `spec/fixed/all-fixed.json`:
 `OswPortSettingVO` is the per-port **override** model (52 fields, none required):
 `profileId` / `profileOverrideEnable`, VLAN intent (`nativeNetworkId`,
 `nativeBridgeVlan`, `tagNetworkIds`, `untagNetworkIds`, `networkTagsSetting`),
-`dhcpSnoopEnable`, `name`, and posture keys (`dot1x`, `poe`, `stormCtrl`,
+`dhcpSnoopEnable`, `name`, and port-config keys (`dot1x`, `poe`, `stormCtrl`,
 `trustMode`, `spanningTreeSetting`, …).
 
 **Admin state stays profile-based (Decision 30), not `disable`.** A port inherits its
@@ -898,8 +897,8 @@ field, not the admin toggle.
 
 - `client.switches.update_switch_port(site_id=..., switch_mac=..., port=..., settings={...})`
   → raw `OperationResponseString`.
-- Posture→Omada mapping, drift comparison, VLAN resolution, and the "All"/"Disable"
-  role-profile migration live in the calling workflow layer, not the SDK.
+- Any value mapping, diffing, VLAN resolution, and the "All"/"Disable"
+  profile migration live in the calling layer, not the SDK.
 - **Verified against a live controller (SG2210XMP-M2):** despite the HTTP method being
   PATCH, this endpoint is **not** a sparse patch — a partial body (e.g. `{"name": ...}`)
   is rejected with Omada "General error". The caller must send a **full
@@ -911,4 +910,62 @@ field, not the admin toggle.
   change and `profileOverrideEnable` flip both persisted; `poe` config is not surfaced in
   the `OswPortVO` read (only operational `portStatus.poe`), which is a read-model gap, not
   a write failure.
+
+## Decision 33 (2026-07): `SwitchesResource.update_loopback_control` — device-tier STP setter
+
+### Context
+
+Alongside the per-port setter (Decision 32), the SDK needs to expose the
+**device-tier** spanning-tree settings for a switch: the STP mode (STP/RSTP/MSTP)
+and the device-wide bridge priority that decides the STP root-bridge election.
+These are switch-global, not per-port. They do not live on `general-config` —
+`SwitchGeneralConfig` carries only `name` / `jumbo` / `lagHashAlg` / `ledSetting`
+/ `location` / `sdm` / `tagIds`. The real endpoint in `spec/fixed/all-fixed.json`
+is:
+
+- PUT `/openapi/v1/.../sites/{siteId}/switches/{switchMac}/config/loopback` — body
+  `SwitchLoopbackControl`, response `OperationResponseWithoutResult`.
+
+`SwitchLoopbackControl` fields: `stp` (0 OFF / 1 STP / 2 RSTP / 3 MSTP),
+`priority` (0..61440, divisible by 4096 — the device-global bridge priority),
+`mstp` (`OswStpMstpConfigOpenApiVO`), and timer knobs `forwardDelay` / `helloTime`
+/ `maxAge` / `maxHops` / `txHoldCount` / `loopbackDetectEnable`.
+
+There is **no** device-global or site-global DHCP-snooping enable in the Omada
+API. DHCP snooping is only per-port (`OswPortSettingVO.dhcpSnoopEnable`, Decision
+32) or per-site snoop *rules* (`/dhcpSnoops`); an abstract "global DHCP-snooping
+enable" therefore has no target in the Omada API.
+
+### Decision
+
+- Add `SwitchesResource.update_loopback_control(*, site_id, switch_mac, settings)`
+  (keyword-only, dict-first): normalize `switch_mac`, **PUT** the loopback endpoint
+  with `settings` as the JSON body, return the raw controller response — same
+  raw-response, verbatim-body convention as `update_switch_port`.
+- The body is passed through **verbatim**: no validation, translation, defaulting,
+  or enum mapping. Any translation into Omada enums/values is the caller's
+  responsibility, not the SDK's.
+- **PUT, not PATCH**, matching the spec; the endpoint is PUT-only (no dedicated GET
+  twin), so it sets absolute state and is naturally idempotent.
+- **Single-switch only** — no batching.
+
+### Consequences
+
+- `client.switches.update_loopback_control(site_id=..., switch_mac=..., settings={"stp": 2, "priority": 4096})`
+  → raw `OperationResponseWithoutResult`.
+- The bridge priority set here is the only genuinely device-global STP priority in
+  the Omada model; the per-port/per-profile `spanningTreeSetting.priority` is a
+  different, unrelated knob.
+- **Verified against a live controller (SG2210XMP-M2, firmware 1.0.6):** unlike the
+  per-port PATCH (Decision 32), this endpoint **accepts a sparse body** — a partial
+  `{"stp": 2, "priority": 4096}` is applied and the untouched timers
+  (`forwardDelay`/`helloTime`/`maxAge`/`maxHops`/`txHoldCount`) keep their existing
+  values. So the caller need not send a full `SwitchLoopbackControl`. Confirmed a
+  distinct `priority` (4096) persists and can be changed back (32768).
+- **The PUT response echoes the full switch object**, including the resulting
+  top-level `stp`/`priority` and all timers. Combined with the device read
+  (`switches.get_by_mac` / `switches.all`, which carry the same top-level fields),
+  callers have effective read access to the device-tier STP state even without a
+  dedicated GET-loopback endpoint.
+- Timer knobs and `mstp` are available but not required for a basic STP/priority set.
 

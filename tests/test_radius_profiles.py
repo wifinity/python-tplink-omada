@@ -32,12 +32,12 @@ def _list_response(*profiles):
 
 def test_all_returns_profile_list() -> None:
     client = DummyClient()
-    client.get_response = _list_response({"name": "Home Networking Wi-Fi", "radiusProfileId": "r1"})
+    client.get_response = _list_response({"name": "My RADIUS Profile", "radiusProfileId": "r1"})
     resource = RadiusProfilesResource(client)
 
     result = resource.all(site_id="s1")
 
-    assert result == [{"name": "Home Networking Wi-Fi", "radiusProfileId": "r1"}]
+    assert result == [{"name": "My RADIUS Profile", "radiusProfileId": "r1"}]
     assert client.get_calls[0][0] == "/openapi/v1/sites/s1/profiles/radius"
 
 
@@ -53,13 +53,13 @@ def test_get_by_name_returns_matching_profile() -> None:
     client = DummyClient()
     client.get_response = _list_response(
         {"name": "Other", "radiusProfileId": "r0"},
-        {"name": "Home Networking Wi-Fi", "radiusProfileId": "r1"},
+        {"name": "My RADIUS Profile", "radiusProfileId": "r1"},
     )
     resource = RadiusProfilesResource(client)
 
-    result = resource.get(site_id="s1", name="Home Networking Wi-Fi")
+    result = resource.get(site_id="s1", name="My RADIUS Profile")
 
-    assert result == {"name": "Home Networking Wi-Fi", "radiusProfileId": "r1"}
+    assert result == {"name": "My RADIUS Profile", "radiusProfileId": "r1"}
 
 
 def test_get_by_name_raises_when_not_found() -> None:
@@ -67,27 +67,27 @@ def test_get_by_name_raises_when_not_found() -> None:
     client.get_response = _list_response({"name": "Other", "radiusProfileId": "r0"})
     resource = RadiusProfilesResource(client)
 
-    with pytest.raises(RadiusProfileNotFoundError, match="Home Networking Wi-Fi"):
-        resource.get(site_id="s1", name="Home Networking Wi-Fi")
+    with pytest.raises(RadiusProfileNotFoundError, match="My RADIUS Profile"):
+        resource.get(site_id="s1", name="My RADIUS Profile")
 
 
 def test_get_by_name_raises_on_duplicates() -> None:
     client = DummyClient()
     client.get_response = _list_response(
-        {"name": "Home Networking Wi-Fi", "radiusProfileId": "r1"},
-        {"name": "Home Networking Wi-Fi", "radiusProfileId": "r2"},
+        {"name": "My RADIUS Profile", "radiusProfileId": "r1"},
+        {"name": "My RADIUS Profile", "radiusProfileId": "r2"},
     )
     resource = RadiusProfilesResource(client)
 
     with pytest.raises(ValueError, match="Multiple RADIUS profiles"):
-        resource.get(site_id="s1", name="Home Networking Wi-Fi")
+        resource.get(site_id="s1", name="My RADIUS Profile")
 
 
 def test_get_by_id_returns_matching_profile() -> None:
     client = DummyClient()
     client.get_response = _list_response(
         {"name": "Other", "radiusProfileId": "r0"},
-        {"name": "Home Networking Wi-Fi", "radiusProfileId": "r1"},
+        {"name": "My RADIUS Profile", "radiusProfileId": "r1"},
     )
     resource = RadiusProfilesResource(client)
 
@@ -113,7 +113,7 @@ def test_get_rejects_invalid_selector_combinations() -> None:
         resource.get(site_id="s1")
 
     with pytest.raises(ValueError, match="Provide exactly one"):
-        resource.get(site_id="s1", id="r1", name="Home Networking Wi-Fi")
+        resource.get(site_id="s1", id="r1", name="My RADIUS Profile")
 
 
 def test_create_posts_to_expected_path() -> None:
@@ -122,14 +122,14 @@ def test_create_posts_to_expected_path() -> None:
 
     resource.create(
         site_id="s1",
-        name="Home Networking Wi-Fi",
+        name="My RADIUS Profile",
         auth_servers=[_AUTH_SERVER],
     )
 
     assert len(client.post_calls) == 1
     path, payload = client.post_calls[0]
     assert path == "/openapi/v1/sites/s1/profiles/radius"
-    assert payload["name"] == "Home Networking Wi-Fi"
+    assert payload["name"] == "My RADIUS Profile"
     assert payload["authServer"] == [_AUTH_SERVER]
     assert payload["radiusAccountingEnable"] is False
     assert payload["wirelessVlanAssignment"] is False
@@ -175,23 +175,23 @@ def test_upsert_creates_when_absent() -> None:
 
     _, created = resource.upsert(
         site_id="s1",
-        name="Home Networking Wi-Fi",
+        name="My RADIUS Profile",
         auth_servers=[_AUTH_SERVER],
     )
 
     assert created is True
     assert len(client.post_calls) == 1
-    assert client.post_calls[0][1]["name"] == "Home Networking Wi-Fi"
+    assert client.post_calls[0][1]["name"] == "My RADIUS Profile"
 
 
 def test_upsert_skips_when_profile_exists() -> None:
     client = DummyClient()
-    client.get_response = _list_response({"name": "Home Networking Wi-Fi", "radiusProfileId": "r1"})
+    client.get_response = _list_response({"name": "My RADIUS Profile", "radiusProfileId": "r1"})
     resource = RadiusProfilesResource(client)
 
     profile, created = resource.upsert(
         site_id="s1",
-        name="Home Networking Wi-Fi",
+        name="My RADIUS Profile",
         auth_servers=[_AUTH_SERVER],
     )
 
