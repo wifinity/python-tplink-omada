@@ -38141,7 +38141,7 @@
             "type": "string"
           },
           "poe": {
-            "description": "PoE should be a value as follows: 0: on, 1: off, 2: \"do not modify\"",
+            "description": "PoE should be a value as follows: 0: off (Disable), 1: on (Enable), 2: \"do not modify\". NOTE: corrected against a live controller (SG2210XMP-M2) \u2014 the vendor's original description had 0 and 1 inverted (it stated \"0: on, 1: off\").",
             "format": "int32",
             "type": "integer"
           },
