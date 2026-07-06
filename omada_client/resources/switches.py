@@ -249,8 +249,10 @@ class SwitchesResource:
 
         The endpoint is PUT-only (there is no GET twin), so it sets absolute state
         and is naturally idempotent; the caller does not read-before-write here.
-        Note there is no device-global DHCP-snooping enable in the Omada API — that
-        is per-port (``OswPortSettingVO.dhcpSnoopEnable``) or per-site snoop rules.
+        Note: DHCP snooping is unrelated to this endpoint — it has a dedicated
+        site-wide enable and per-device snoop entries; see ``DhcpSnoopingResource``
+        (``client.dhcp_snooping``). The per-port ``OswPortSettingVO.dhcpSnoopEnable``
+        field is not the trust mechanism.
 
         Single-switch only. Returns the raw controller response
         (``OperationResponseWithoutResult``).

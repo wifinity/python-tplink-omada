@@ -3,6 +3,7 @@
 from .aps import APsResource
 from .ap_groups import APGroupsResource
 from .devices import DevicesResource
+from .dhcp_snooping import DhcpSnoopingResource
 from .lan_networks import LanNetworksResource
 from .olts import OLTsResource
 from .radius_profiles import RadiusProfilesResource
@@ -16,6 +17,7 @@ __all__ = [
     "SitesResource",
     "SiteServicesResource",
     "DevicesResource",
+    "DhcpSnoopingResource",
     "LanNetworksResource",
     "RadiusProfilesResource",
     "WiFiNetworksResource",
