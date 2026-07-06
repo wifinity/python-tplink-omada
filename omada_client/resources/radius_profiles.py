@@ -87,6 +87,41 @@ class RadiusProfilesResource:
         )
         return cast(Dict[str, Any], response)
 
+    def update(
+        self,
+        *,
+        site_id: str,
+        profile_id: str,
+        name: str,
+        auth_servers: list[dict[str, Any]],
+        accounting_enabled: bool = False,
+        wireless_vlan_assignment: bool = False,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Modify an existing RADIUS profile (PATCH modifyRadiusProfile).
+
+        The request body is the same shape as create. Omada rejects modifying a profile
+        that is in use by PPSK/DPSK with error -34015; callers should surface that.
+        """
+        if not isinstance(profile_id, str) or not profile_id:
+            raise ValueError("profile_id must be a non-empty string")
+        if not isinstance(name, str) or not name:
+            raise ValueError("name must be a non-empty string")
+        if not auth_servers:
+            raise ValueError("auth_servers must be a non-empty list")
+        payload: dict[str, Any] = {
+            "name": name,
+            "authServer": auth_servers,
+            "radiusAccountingEnable": accounting_enabled,
+            "wirelessVlanAssignment": wireless_vlan_assignment,
+        }
+        payload.update(kwargs)
+        response = self.client.patch(
+            self._path(f"/openapi/v1/sites/{site_id}/profiles/radius/{profile_id}"),
+            json=payload,
+        )
+        return cast(Dict[str, Any], response)
+
     def upsert(
         self,
         *,

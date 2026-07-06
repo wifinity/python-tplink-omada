@@ -14,6 +14,7 @@ class DummyClient:
         self.get_responses: list | None = None
         self.get_calls: list[tuple[str, object]] = []
         self.post_calls: list[tuple[str, object]] = []
+        self.patch_calls: list[tuple[str, object]] = []
 
     def get(self, path: str, params=None):
         self.get_calls.append((path, params))
@@ -23,6 +24,10 @@ class DummyClient:
 
     def post(self, path: str, json=None):
         self.post_calls.append((path, json))
+        return {"ok": True}
+
+    def patch(self, path: str, json=None):
+        self.patch_calls.append((path, json))
         return {"ok": True}
 
 
@@ -198,3 +203,33 @@ def test_upsert_skips_when_profile_exists() -> None:
     assert created is False
     assert profile["radiusProfileId"] == "r1"
     assert len(client.post_calls) == 0
+
+
+def test_update_patches_expected_path_and_payload() -> None:
+    client = DummyClient()
+    resource = RadiusProfilesResource(client)
+
+    resource.update(
+        site_id="s1",
+        profile_id="r1",
+        name="Home Networking Wi-Fi",
+        auth_servers=[_AUTH_SERVER],
+        wireless_vlan_assignment=True,
+        requireMessageAuthenticator=True,
+    )
+
+    assert len(client.patch_calls) == 1
+    path, payload = client.patch_calls[0]
+    assert path == "/openapi/v1/sites/s1/profiles/radius/r1"
+    assert payload["name"] == "Home Networking Wi-Fi"
+    assert payload["authServer"] == [_AUTH_SERVER]
+    assert payload["wirelessVlanAssignment"] is True
+    assert payload["requireMessageAuthenticator"] is True
+
+
+def test_update_requires_profile_id_and_servers() -> None:
+    resource = RadiusProfilesResource(DummyClient())
+    with pytest.raises(ValueError):
+        resource.update(site_id="s1", profile_id="", name="n", auth_servers=[_AUTH_SERVER])
+    with pytest.raises(ValueError):
+        resource.update(site_id="s1", profile_id="r1", name="n", auth_servers=[])
