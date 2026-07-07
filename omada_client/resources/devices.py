@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, cast
+from typing import Any, cast
 
 from ..mac import normalize_mac
 
@@ -67,7 +67,7 @@ class DevicesResource:
             return cast(str, api_path(path))
         return path
 
-    def list(
+    def all(
         self,
         *,
         site_id: str,
@@ -78,7 +78,7 @@ class DevicesResource:
         query: dict[str, Any] = {"page": page, "pageSize": page_size}
         query.update(params)
         response = self.client.get(self._path(f"/openapi/v1/sites/{site_id}/devices"), params=query)
-        return cast(Dict[str, Any], response)
+        return cast(dict[str, Any], response)
 
     def get_by_mac(
         self,
@@ -91,9 +91,9 @@ class DevicesResource:
 
         if (device_type or "").lower() == "ap":
             response = self.client.get(self._path(f"/openapi/v1/sites/{site_id}/aps/{normalized_mac}"))
-            return cast(Dict[str, Any], response)
+            return cast(dict[str, Any], response)
 
-        response = self.list(site_id=site_id, searchKey=normalized_mac)
+        response = self.all(site_id=site_id, searchKey=normalized_mac)
         items = self._extract_device_items(response)
         for item in items:
             if not isinstance(item, dict):
@@ -104,7 +104,7 @@ class DevicesResource:
                 item.get("macAddress"),
             ]
             if any(_matches_mac(value, normalized_mac) for value in values):
-                matched = cast(Dict[str, Any], item)
+                matched = cast(dict[str, Any], item)
                 augment_device_status_meanings(matched)
                 return matched
 
@@ -130,12 +130,12 @@ class DevicesResource:
             self._path(f"/openapi/v1/sites/{site_id}/devices/{normalized_mac}/start-adopt"),
             json=payload,
         )
-        return cast(Dict[str, Any], response)
+        return cast(dict[str, Any], response)
 
     def check_adopt(self, *, site_id: str, mac: str) -> dict[str, Any]:
         normalized_mac = normalize_mac(mac)
         response = cast(
-            Dict[str, Any],
+            dict[str, Any],
             self.client.get(self._path(f"/openapi/v1/sites/{site_id}/devices/{normalized_mac}/adopt-result")),
         )
         result = response.get("result")
@@ -163,32 +163,32 @@ class DevicesResource:
         response = self.client.post(
             self._path(f"/openapi/v1/sites/{site_id}/multi-devices/devicekey-add"), json=payload
         )
-        return cast(Dict[str, Any], response)
+        return cast(dict[str, Any], response)
 
     def delete(self, *, site_id: str, mac: str) -> dict[str, Any]:
         normalized_mac = normalize_mac(mac)
         response = self.client.post(self._path(f"/openapi/v1/sites/{site_id}/devices/{normalized_mac}/forget"))
-        return cast(Dict[str, Any], response)
+        return cast(dict[str, Any], response)
 
     def register(self, *, site_id: str, device_data: dict[str, Any]) -> dict[str, Any]:
         response = self.client.post(self._path(f"/openapi/v1/sites/{site_id}/devices"), json=device_data)
-        return cast(Dict[str, Any], response)
+        return cast(dict[str, Any], response)
 
-    def remove(self, *, site_id: str, device_ids: List[str]) -> dict[str, Any]:
+    def remove(self, *, site_id: str, device_ids: list[str]) -> dict[str, Any]:
         payload = {"deviceIds": device_ids}
         response = self.client.delete(self._path(f"/openapi/v1/sites/{site_id}/devices"), json=payload)
-        return cast(Dict[str, Any], response)
+        return cast(dict[str, Any], response)
 
     def send_config(self, *, site_id: str, device_id: str, config: dict[str, Any]) -> dict[str, Any]:
         response = self.client.post(
             self._path(f"/openapi/v1/sites/{site_id}/devices/{device_id}/config"),
             json=config,
         )
-        return cast(Dict[str, Any], response)
+        return cast(dict[str, Any], response)
 
     def status(self, *, site_id: str, device_id: str) -> dict[str, Any]:
         response = self.client.get(self._path(f"/openapi/v1/sites/{site_id}/devices/{device_id}/status"))
-        return cast(Dict[str, Any], response)
+        return cast(dict[str, Any], response)
 
     def get_onu_detail_by_mac(
         self,
@@ -205,7 +205,7 @@ class DevicesResource:
         if not callable(getter):
             raise ValueError("client.olts.get_onu_detail_by_mac is required to query ONU telemetry")
         return cast(
-            Dict[str, Any],
+            dict[str, Any],
             getter(
                 site_id=site_id,
                 olt_mac=olt_mac,
@@ -216,7 +216,7 @@ class DevicesResource:
         )
 
     @staticmethod
-    def _extract_device_items(response: dict[str, Any]) -> List[Any]:
+    def _extract_device_items(response: dict[str, Any]) -> list[Any]:
         for key in ("data", "result", "items", "list"):
             value = response.get(key)
             if isinstance(value, list):

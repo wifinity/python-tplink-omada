@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, cast
+from typing import Any, cast
 
 from ..exceptions import DeviceNotFoundError
 from ..mac import normalize_mac
@@ -22,8 +22,8 @@ class SwitchesResource:
         **params: Any,
     ) -> dict[str, Any]:
         return cast(
-            Dict[str, Any],
-            self.client.devices.list(
+            dict[str, Any],
+            self.client.devices.all(
                 site_id=site_id,
                 page=page,
                 page_size=page_size,
@@ -35,31 +35,31 @@ class SwitchesResource:
     def get_by_mac(self, *, site_id: str, mac: str) -> dict[str, Any]:
         normalized_mac = normalize_mac(mac)
         response = cast(
-            Dict[str, Any],
-            self.client.devices.list(site_id=site_id, searchKey=normalized_mac, deviceType="switch"),
+            dict[str, Any],
+            self.client.devices.all(site_id=site_id, searchKey=normalized_mac, deviceType="switch"),
         )
         items = self._extract_items(response)
         for item in items:
             if not isinstance(item, dict):
                 continue
             if self._matches_mac(item.get("mac"), normalized_mac):
-                matched = cast(Dict[str, Any], item)
+                matched = cast(dict[str, Any], item)
                 augment_device_status_meanings(matched)
                 return matched
         raise DeviceNotFoundError(f"Switch with MAC '{mac}' not found in site '{site_id}'")
 
     def get_by_name(self, *, site_id: str, name: str) -> dict[str, Any]:
         response = cast(
-            Dict[str, Any],
-            self.client.devices.list(site_id=site_id, searchKey=name, deviceType="switch"),
+            dict[str, Any],
+            self.client.devices.all(site_id=site_id, searchKey=name, deviceType="switch"),
         )
         items = self._extract_items(response)
-        exact_matches: List[dict[str, Any]] = []
+        exact_matches: list[dict[str, Any]] = []
         for item in items:
             if not isinstance(item, dict):
                 continue
             if item.get("name") == name:
-                matched = cast(Dict[str, Any], item)
+                matched = cast(dict[str, Any], item)
                 augment_device_status_meanings(matched)
                 exact_matches.append(matched)
         if len(exact_matches) == 1:
@@ -78,7 +78,7 @@ class SwitchesResource:
         password: str | None = None,
     ) -> dict[str, Any]:
         return cast(
-            Dict[str, Any],
+            dict[str, Any],
             self.client.devices.add_by_device_key(
                 site_id=site_id,
                 device_key=device_key,
@@ -97,12 +97,12 @@ class SwitchesResource:
         password: str | None = None,
     ) -> dict[str, Any]:
         return cast(
-            Dict[str, Any],
+            dict[str, Any],
             self.client.devices.start_adopt(site_id=site_id, mac=mac, username=username, password=password),
         )
 
     def check_adopt(self, *, site_id: str, mac: str) -> dict[str, Any]:
-        return cast(Dict[str, Any], self.client.devices.check_adopt(site_id=site_id, mac=mac))
+        return cast(dict[str, Any], self.client.devices.check_adopt(site_id=site_id, mac=mac))
 
     def get_ports(self, *, site_id: str, switch_mac: str) -> list[dict[str, Any]]:
         """Return current port settings for one switch.
@@ -114,7 +114,7 @@ class SwitchesResource:
         """
         normalized = normalize_mac(switch_mac)
         response = cast(
-            Dict[str, Any],
+            dict[str, Any],
             self.client.post(
                 self.client.api_path(f"/openapi/v1/sites/{site_id}/switches/ports/select"),
                 json={"selectAll": True, "switchList": [], "filters": {"switchMac": normalized}},
@@ -143,7 +143,7 @@ class SwitchesResource:
         """
         normalized = normalize_mac(switch_mac)
         return cast(
-            Dict[str, Any],
+            dict[str, Any],
             self.client.put(
                 self.client.api_path(f"/openapi/v1/sites/{site_id}/switches/{normalized}/multi-ports/name"),
                 json={"portNameList": port_names},
@@ -156,8 +156,8 @@ class SwitchesResource:
         Calls GET /openapi/v2/.../sites/{siteId}/lan-profiles.
         """
         url = self.client.api_path(f"/openapi/v2/sites/{site_id}/lan-profiles")
-        response = cast(Dict[str, Any], self.client.get(url, params={"page": 1, "pageSize": 1000}))
-        return cast(List[Any], self._extract_items(response))
+        response = cast(dict[str, Any], self.client.get(url, params={"page": 1, "pageSize": 1000}))
+        return cast(list[Any], self._extract_items(response))
 
     def set_port_profiles(
         self,
@@ -217,7 +217,7 @@ class SwitchesResource:
         """
         normalized = normalize_mac(switch_mac)
         return cast(
-            Dict[str, Any],
+            dict[str, Any],
             self.client.patch(
                 self.client.api_path(f"/openapi/v1/sites/{site_id}/switches/{normalized}/ports/{port}"),
                 json=settings,
@@ -259,7 +259,7 @@ class SwitchesResource:
         """
         normalized = normalize_mac(switch_mac)
         return cast(
-            Dict[str, Any],
+            dict[str, Any],
             self.client.put(
                 self.client.api_path(f"/openapi/v1/sites/{site_id}/switches/{normalized}/config/loopback"),
                 json=settings,
@@ -275,10 +275,10 @@ class SwitchesResource:
         ResponseIdVO ({"id": "<newProfileId>"}).
         """
         url = self.client.api_path(f"/openapi/v2/sites/{site_id}/lan-profiles")
-        response = cast(Dict[str, Any], self.client.post(url, json=profile))
+        response = cast(dict[str, Any], self.client.post(url, json=profile))
         result = response.get("result")
         if isinstance(result, dict):
-            return cast(Dict[str, Any], result)
+            return cast(dict[str, Any], result)
         return response
 
     def update_port_profile(
@@ -297,7 +297,7 @@ class SwitchesResource:
         if profile_id is None:
             profile_id = self._resolve_port_profile_id_by_name(site_id=site_id, name=profile.get("name"))
         url = self.client.api_path(f"/openapi/v2/sites/{site_id}/lan-profiles/{profile_id}")
-        return cast(Dict[str, Any], self.client.patch(url, json=profile))
+        return cast(dict[str, Any], self.client.patch(url, json=profile))
 
     def delete_port_profile(
         self,
@@ -316,7 +316,7 @@ class SwitchesResource:
         if profile_id is None:
             profile_id = self._resolve_port_profile_id_by_name(site_id=site_id, name=name)
         url = self.client.api_path(f"/openapi/v2/sites/{site_id}/lan-profiles/{profile_id}")
-        return cast(Dict[str, Any], self.client.delete(url))
+        return cast(dict[str, Any], self.client.delete(url))
 
     def upsert_port_profile(self, *, site_id: str, profile: dict[str, Any]) -> tuple[dict[str, Any], bool]:
         """Create-or-update a LAN port profile by name.
@@ -358,10 +358,10 @@ class SwitchesResource:
 
     def delete(self, *, site_id: str, mac: str) -> dict[str, Any]:
         normalized_mac = normalize_mac(mac)
-        return cast(Dict[str, Any], self.client.devices.delete(site_id=site_id, mac=normalized_mac))
+        return cast(dict[str, Any], self.client.devices.delete(site_id=site_id, mac=normalized_mac))
 
     @staticmethod
-    def _extract_items(response: dict[str, Any]) -> List[Any]:
+    def _extract_items(response: dict[str, Any]) -> list[Any]:
         for key in ("data", "result", "items", "list"):
             value = response.get(key)
             if isinstance(value, list):

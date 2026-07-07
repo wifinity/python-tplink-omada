@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, cast
+from typing import cast
 
 import pytest
 
@@ -289,12 +289,12 @@ def test_wifi_create_psk_builds_payload_and_overrides() -> None:
     )
 
     assert client.post_calls[0][0] == "/openapi/v1/sites/s1/wireless-network/wlans/w1/ssids"
-    sent = cast(Dict[str, object], client.post_calls[0][1])
+    sent = cast(dict[str, object], client.post_calls[0][1])
     assert sent["security"] == 3
     assert sent["name"] == "GuestSSID"
     assert sent["band"] == 7
     assert sent["pmfMode"] == 3
-    psk_setting = cast(Dict[str, object], sent["pskSetting"])
+    psk_setting = cast(dict[str, object], sent["pskSetting"])
     assert psk_setting["securityKey"] == "initial-pass"
     assert psk_setting["versionPsk"] == 2
     assert psk_setting["encryptionPsk"] == 3
@@ -358,7 +358,7 @@ def test_wifi_create_ppsk_local_hyphen_alias() -> None:
         ppsk_profile_name="My_PPSK_Profile",
     )
 
-    sent = cast(Dict[str, object], client.post_calls[0][1])
+    sent = cast(dict[str, object], client.post_calls[0][1])
     assert sent["security"] == 4
 
 
@@ -376,7 +376,7 @@ def test_wifi_create_dpsk_maps_to_security_five() -> None:
         ppsk_setting={"radiusProfileId": "r1"},
     )
 
-    sent = cast(Dict[str, object], client.post_calls[0][1])
+    sent = cast(dict[str, object], client.post_calls[0][1])
     assert sent["security"] == 5
     assert "ppskSetting" in sent
 
@@ -395,7 +395,7 @@ def test_wifi_create_maps_vlan_shortcut_to_vlan_pool_setting() -> None:
         vlan=99,
     )
 
-    sent = cast(Dict[str, object], client.post_calls[0][1])
+    sent = cast(dict[str, object], client.post_calls[0][1])
     assert sent["vlanEnable"] is True
     assert sent["vlanSetting"] == {
         "mode": 1,
@@ -423,7 +423,7 @@ def test_wifi_create_vlan_setting_omits_vlan_id() -> None:
         vlan_setting=vs,
     )
 
-    sent = cast(Dict[str, object], client.post_calls[0][1])
+    sent = cast(dict[str, object], client.post_calls[0][1])
     assert sent["vlanEnable"] is True
     assert sent["vlanSetting"] == vs
     assert sent["vlanId"] == 98
@@ -468,7 +468,7 @@ def test_wifi_create_open_isolated_type_sets_guest_net() -> None:
 
     resource.create(site_id="s1", wlan_group="w1", type="open-isolated", ssid="G")
 
-    sent = cast(Dict[str, object], client.post_calls[0][1])
+    sent = cast(dict[str, object], client.post_calls[0][1])
     assert sent["security"] == 0
     assert sent["guestNetEnable"] is True
 
@@ -490,7 +490,7 @@ def test_wifi_create_open_with_guest_network_flag() -> None:
 
     resource.create(site_id="s1", wlan_group="w1", type="open", ssid="O", guest_network=True)
 
-    sent = cast(Dict[str, object], client.post_calls[0][1])
+    sent = cast(dict[str, object], client.post_calls[0][1])
     assert sent["guestNetEnable"] is True
 
 
@@ -510,15 +510,15 @@ def test_wifi_create_ppsk_local_from_profile_name() -> None:
     )
 
     assert client.get_calls[0][0].endswith("/sites/s1/ppsk-profiles")
-    sent = cast(Dict[str, object], client.post_calls[0][1])
+    sent = cast(dict[str, object], client.post_calls[0][1])
     assert sent["security"] == 4
     assert sent["pmfMode"] == 3
     assert sent["vlanSetting"]["customConfig"]["vlanPoolIds"] == "999"
-    ppsk = cast(Dict[str, object], sent["ppskSetting"])
+    ppsk = cast(dict[str, object], sent["ppskSetting"])
     assert ppsk["ppskProfileId"] == "ppsk-profile-id"
     assert ppsk["macFormat"] == 2
     assert ppsk["type"] == 0
-    psk = cast(Dict[str, object], sent["pskSetting"])
+    psk = cast(dict[str, object], sent["pskSetting"])
     assert psk["versionPsk"] == 2
     assert psk["encryptionPsk"] == 3
     assert "securityKey" not in psk
@@ -619,10 +619,10 @@ def test_wifi_create_dpsk_from_radius_profile_name() -> None:
     )
 
     assert client.get_calls[0][0].endswith("/sites/s1/profiles/radius")
-    sent = cast(Dict[str, object], client.post_calls[0][1])
+    sent = cast(dict[str, object], client.post_calls[0][1])
     assert sent["security"] == 5
     assert sent["pmfMode"] == 3
-    ppsk = cast(Dict[str, object], sent["ppskSetting"])
+    ppsk = cast(dict[str, object], sent["ppskSetting"])
     assert ppsk["radiusProfileId"] == "radius-profile-id"
     assert ppsk["nasId"] == "SITECODE"
     assert ppsk["type"] == 2
@@ -723,7 +723,7 @@ def test_wifi_update_multicast_config_by_name() -> None:
     )
 
     assert client.patch_calls[0][0].endswith("/ssids/s9/update-multicast-config")
-    assert cast(Dict[str, object], client.patch_calls[0][1])["filterMode"] == 15
+    assert cast(dict[str, object], client.patch_calls[0][1])["filterMode"] == 15
 
 
 _RATE_CONTROL: dict[str, object] = {
@@ -991,7 +991,7 @@ def test_wifi_create_psk_default_pmf_mode() -> None:
         psk="secret-pass",
     )
 
-    sent = cast(Dict[str, object], client.post_calls[0][1])
+    sent = cast(dict[str, object], client.post_calls[0][1])
     assert sent["pmfMode"] == 3
 
 
@@ -1003,7 +1003,7 @@ def test_wifi_create_open_isolated_default_pmf_mode() -> None:
 
     resource.create(site_id="s1", wlan_group="w1", type="open-isolated", ssid="Guest", vlan=98)
 
-    sent = cast(Dict[str, object], client.post_calls[0][1])
+    sent = cast(dict[str, object], client.post_calls[0][1])
     assert sent["pmfMode"] == 2
     assert sent["vlanSetting"]["customConfig"]["vlanPoolIds"] == "98"
 
@@ -1054,7 +1054,7 @@ def test_wifi_create_ppsk_local_security_four_both_settings() -> None:
         ppsk_setting={"ppskProfileId": "prof1", "macFormat": 2, "type": 0},
     )
 
-    sent = cast(Dict[str, object], client.post_calls[0][1])
+    sent = cast(dict[str, object], client.post_calls[0][1])
     assert sent["security"] == 4
     assert isinstance(sent.get("pskSetting"), dict)
     assert isinstance(sent.get("ppskSetting"), dict)
@@ -1104,7 +1104,7 @@ def test_wifi_create_name_only_string_typed() -> None:
 
     resource.create(site_id="s1", wlan_group="w1", type="open", name="OnlyName")
 
-    sent = cast(Dict[str, object], client.post_calls[0][1])
+    sent = cast(dict[str, object], client.post_calls[0][1])
     assert sent["name"] == "OnlyName"
 
 
@@ -1306,7 +1306,7 @@ def test_wifi_update_basic_config_patches_merged_payload() -> None:
     assert len(client.get_calls) == 1
     path, body = client.patch_calls[0]
     assert path.endswith("/wireless-network/wlans/w1/ssids/s1/update-basic-config")
-    sent = cast(Dict[str, object], body)
+    sent = cast(dict[str, object], body)
     assert sent["name"] == "NewSSID"
     assert sent["security"] == 3
 
@@ -1329,7 +1329,7 @@ def test_wifi_update_basic_config_by_name() -> None:
     )
 
     assert client.patch_calls[0][0].endswith("/ssids/s9/update-basic-config")
-    assert cast(Dict[str, object], client.patch_calls[0][1])["guestNetEnable"] is True
+    assert cast(dict[str, object], client.patch_calls[0][1])["guestNetEnable"] is True
 
 
 def test_ssid_detail_to_basic_config_patch_unknown_override_raises() -> None:

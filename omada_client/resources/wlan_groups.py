@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, cast
+from typing import Any, cast
 
 from ..exceptions import WLANGroupNotFoundError
 
@@ -59,7 +59,7 @@ class WLANGroupsResource:
             self._path(f"/openapi/v1/sites/{site_id}/wireless-network/wlans"),
             params=params,
         )
-        return self._coerce_list_response(cast(Dict[str, Any], response))
+        return self._coerce_list_response(cast(dict[str, Any], response))
 
     def create(
         self,
@@ -78,7 +78,7 @@ class WLANGroupsResource:
             self._path(f"/openapi/v1/sites/{site_id}/wireless-network/wlans"),
             json=payload,
         )
-        return cast(Dict[str, Any], response)
+        return cast(dict[str, Any], response)
 
     def get(self, *, site_id: str, id: str | None = None, name: str | None = None) -> dict[str, Any]:
         if (id is None) == (name is None):
@@ -97,4 +97,4 @@ class WLANGroupsResource:
             if wlan_id is None:
                 raise ValueError(f"Matched WLAN group '{name}' does not include a valid wlanId")
         response = self.client.delete(self._path(f"/openapi/v1/sites/{site_id}/wireless-network/wlans/{wlan_id}"))
-        return cast(Dict[str, Any], response)
+        return cast(dict[str, Any], response)

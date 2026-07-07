@@ -25,7 +25,7 @@ the mandatory ``devices`` envelope and reads/normalises for lookups.
 
 from __future__ import annotations
 
-from typing import Any, Dict, cast
+from typing import Any, cast
 
 from ..mac import normalize_mac
 
@@ -59,7 +59,7 @@ class DhcpSnoopingResource:
         GET /openapi/v1/sites/{siteId}/dhcpSnoops/status → ``result.dhcpSnoopEnable``.
         """
         response = cast(
-            Dict[str, Any],
+            dict[str, Any],
             self.client.get(self._path(f"/openapi/v1/sites/{site_id}/dhcpSnoops/status")),
         )
         result = response.get("result")
@@ -73,7 +73,7 @@ class DhcpSnoopingResource:
         PATCH /openapi/v1/sites/{siteId}/dhcpSnoops/status with ``{dhcpSnoopEnable}``.
         """
         return cast(
-            Dict[str, Any],
+            dict[str, Any],
             self.client.patch(
                 self._path(f"/openapi/v1/sites/{site_id}/dhcpSnoops/status"),
                 json={"dhcpSnoopEnable": enabled},
@@ -86,7 +86,7 @@ class DhcpSnoopingResource:
             self._path(f"/openapi/v1/sites/{site_id}/dhcpSnoops"),
             params={"page": 1, "pageSize": 1000},
         )
-        return self._coerce_list_response(cast(Dict[str, Any], response))
+        return self._coerce_list_response(cast(dict[str, Any], response))
 
     def get_supported(self, *, site_id: str) -> list[dict[str, Any]]:
         """List switches that support DHCP snooping, with their selectable ports.
@@ -98,7 +98,7 @@ class DhcpSnoopingResource:
             self._path(f"/openapi/v1/sites/{site_id}/switches/supportDhcpSnoop"),
             params={"page": 1, "pageSize": 1000},
         )
-        return self._coerce_list_response(cast(Dict[str, Any], response))
+        return self._coerce_list_response(cast(dict[str, Any], response))
 
     def create_snoops(self, *, site_id: str, devices: list[dict[str, Any]]) -> dict[str, Any]:
         """Create per-device snoop entries.
@@ -109,7 +109,7 @@ class DhcpSnoopingResource:
         nothing — so the wrapper is applied here, not left to the caller.
         """
         return cast(
-            Dict[str, Any],
+            dict[str, Any],
             self.client.post(
                 self._path(f"/openapi/v1/sites/{site_id}/dhcpSnoops"),
                 json={"devices": devices},
@@ -123,7 +123,7 @@ class DhcpSnoopingResource:
         ``{mac, name, ports}`` body (passed through unchanged).
         """
         return cast(
-            Dict[str, Any],
+            dict[str, Any],
             self.client.patch(
                 self._path(f"/openapi/v1/sites/{site_id}/dhcpSnoops/{snoop_id}"),
                 json=settings,
@@ -136,7 +136,7 @@ class DhcpSnoopingResource:
         DELETE /openapi/v1/sites/{siteId}/dhcpSnoops/{snoopId}.
         """
         return cast(
-            Dict[str, Any],
+            dict[str, Any],
             self.client.delete(self._path(f"/openapi/v1/sites/{site_id}/dhcpSnoops/{snoop_id}")),
         )
 

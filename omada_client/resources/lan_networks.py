@@ -21,7 +21,7 @@ DHCP device:
 
 from __future__ import annotations
 
-from typing import Any, Dict, Literal, cast
+from typing import Any, Literal, cast
 
 _DHCP_DEVICE_TYPE: dict[str, int] = {"gateway": 1, "switch": 2, "external": 3}
 
@@ -56,7 +56,7 @@ class LanNetworksResource:
             self._path(f"/openapi/v1/sites/{site_id}/lan-networks"),
             params={"page": 1, "pageSize": 1000},
         )
-        return self._coerce_list_response(cast(Dict[str, Any], response))
+        return self._coerce_list_response(cast(dict[str, Any], response))
 
     def get(
         self,
@@ -79,7 +79,7 @@ class LanNetworksResource:
             response = self.client.get(
                 self._path(f"/openapi/v1/sites/{site_id}/lan-networks/{network_id}"),
             )
-            result = cast(Dict[str, Any], response).get("result")
+            result = cast(dict[str, Any], response).get("result")
             if isinstance(result, dict):
                 return result
             raise LanNetworkNotFoundError(f"LAN network {network_id!r} not found on site {site_id!r}")
@@ -121,7 +121,7 @@ class LanNetworksResource:
             self._path(f"/openapi/v1/sites/{site_id}/networks/confirm"),
             json=payload,
         )
-        return cast(Dict[str, Any], response)
+        return cast(dict[str, Any], response)
 
     def update(
         self,
@@ -154,7 +154,7 @@ class LanNetworksResource:
             self._path(f"/openapi/v1/sites/{site_id}/lan-networks/{resolved_network_id}"),
             json=payload,
         )
-        return cast(Dict[str, Any], response)
+        return cast(dict[str, Any], response)
 
     def delete(
         self,
@@ -176,7 +176,7 @@ class LanNetworksResource:
         response = self.client.delete(
             self._path(f"/openapi/v1/sites/{site_id}/lan-networks/{network_id}"),
         )
-        return cast(Dict[str, Any], response)
+        return cast(dict[str, Any], response)
 
     def vlan_id_to_network_id(self, *, site_id: str) -> dict[int, str]:
         """Return ``{vlan_id: network_id}`` for all LAN networks on a site.

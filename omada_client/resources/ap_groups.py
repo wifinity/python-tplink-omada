@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, cast
+from typing import Any, cast
 
 
 class APGroupsResource:
@@ -17,4 +17,4 @@ class APGroupsResource:
 
     def create(self, *, site_id: str, group_data: dict[str, Any]) -> dict[str, Any]:
         response = self.client.post(self._path(f"/openapi/v1/sites/{site_id}/ap-groups"), json=group_data)
-        return cast(Dict[str, Any], response)
+        return cast(dict[str, Any], response)

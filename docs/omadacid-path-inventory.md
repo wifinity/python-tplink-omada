@@ -13,7 +13,7 @@ Source: `spec/fixed/all-fixed.json`
   - SDK path template: `/openapi/v1/sites`
   - Canonical local-controller path: `/openapi/v1/{omadacId}/sites`
   - Fixed spec match: exact
-- `DevicesResource.list`, `DevicesResource.create`/`DevicesResource.register`, `DevicesResource.remove`
+- `DevicesResource.all`, `DevicesResource.create`/`DevicesResource.register`, `DevicesResource.remove`
   - SDK path template: `/openapi/v1/sites/{siteId}/devices`
   - Canonical local-controller path: `/openapi/v1/{omadacId}/sites/{siteId}/devices`
   - Fixed spec match: exact
@@ -61,7 +61,7 @@ Source: `spec/fixed/all-fixed.json`
 ## Typed facade reuse pattern
 
 - `APsResource` maps AP workflows onto canonical `DevicesResource` actions:
-  - `APsResource.all` -> `DevicesResource.list` with AP-specific query options
+  - `APsResource.all` -> `DevicesResource.all` with AP-specific query options
   - `APsResource.get_by_mac` -> `DevicesResource.get_by_mac(..., device_type="ap")`
   - `APsResource.create` -> `DevicesResource.add_by_device_key`
   - `APsResource.delete` -> `DevicesResource.delete`

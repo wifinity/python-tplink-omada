@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, cast
+from typing import Any, cast
 
 import pycountry
 
@@ -77,14 +77,14 @@ class SitesResource:
 
     def all(self, *, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         response = self.client.get(self._path("/openapi/v1/sites"), params=self._site_list_params(params))
-        return self._coerce_list_response(cast(Dict[str, Any], response))
+        return self._coerce_list_response(cast(dict[str, Any], response))
 
     def get(self, *, id: str | None = None, name: str | None = None) -> dict[str, Any]:
         if (id is None) == (name is None):
             raise ValueError("Provide exactly one of 'id' or 'name'")
 
         if id is not None:
-            response = cast(Dict[str, Any], self.client.get(self._path(f"/openapi/v1/sites/{id}")))
+            response = cast(dict[str, Any], self.client.get(self._path(f"/openapi/v1/sites/{id}")))
             result = response.get("result")
             if isinstance(result, dict):
                 return result
@@ -134,7 +134,7 @@ class SitesResource:
             )
 
         response = self.client.post(self._path("/openapi/v1/sites"), json=payload)
-        return cast(Dict[str, Any], response)
+        return cast(dict[str, Any], response)
 
     def update_ntp(
         self,
@@ -143,7 +143,7 @@ class SitesResource:
         ntp_enable: bool,
         ntp_servers: list[str],
     ) -> dict[str, Any]:
-        current = cast(Dict[str, Any], self.client.get(self._path(f"/openapi/v1/sites/{site_id}")))
+        current = cast(dict[str, Any], self.client.get(self._path(f"/openapi/v1/sites/{site_id}")))
         current_data = current.get("result", current)
         if not isinstance(current_data, dict):
             current_data = current
@@ -155,7 +155,7 @@ class SitesResource:
             "ntpEnable": ntp_enable,
             "ntpServers": [{"address": s} for s in ntp_servers],
         }
-        response = cast(Dict[str, Any], self.client.put(self._path(f"/openapi/v1/sites/{site_id}"), json=payload))
+        response = cast(dict[str, Any], self.client.put(self._path(f"/openapi/v1/sites/{site_id}"), json=payload))
         result = response.get("result")
         if isinstance(result, dict):
             return result
@@ -196,7 +196,7 @@ class SitesResource:
                 "password": device_password,
             }
 
-        response = cast(Dict[str, Any], self.client.put(self._path(f"/openapi/v1/sites/{id}"), json=payload))
+        response = cast(dict[str, Any], self.client.put(self._path(f"/openapi/v1/sites/{id}"), json=payload))
         result = response.get("result")
         if isinstance(result, dict):
             return result

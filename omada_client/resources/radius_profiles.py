@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, cast
+from typing import Any, cast
 
 
 class RadiusProfilesResource:
@@ -40,7 +40,7 @@ class RadiusProfilesResource:
         response = self.client.get(
             self._path(f"/openapi/v1/sites/{site_id}/profiles/radius"),
         )
-        return self._coerce_list_response(cast(Dict[str, Any], response))
+        return self._coerce_list_response(cast(dict[str, Any], response))
 
     def get(self, *, site_id: str, id: str | None = None, name: str | None = None) -> dict[str, Any]:
         from ..exceptions import RadiusProfileNotFoundError
@@ -85,7 +85,7 @@ class RadiusProfilesResource:
             self._path(f"/openapi/v1/sites/{site_id}/profiles/radius"),
             json=payload,
         )
-        return cast(Dict[str, Any], response)
+        return cast(dict[str, Any], response)
 
     def update(
         self,
@@ -120,7 +120,7 @@ class RadiusProfilesResource:
             self._path(f"/openapi/v1/sites/{site_id}/profiles/radius/{profile_id}"),
             json=payload,
         )
-        return cast(Dict[str, Any], response)
+        return cast(dict[str, Any], response)
 
     def upsert(
         self,

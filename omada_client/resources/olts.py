@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, cast
+from typing import Any, cast
 
 from ..mac import normalize_mac
 
@@ -33,7 +33,7 @@ class OLTsResource:
             self._path(f"/openapi/v1/sites/{site_id}/olts/{normalized_olt_mac}/pon/onu-management/informations/list"),
             params=query,
         )
-        return cast(Dict[str, Any], response)
+        return cast(dict[str, Any], response)
 
     def get_onu_detail(
         self,
@@ -55,7 +55,7 @@ class OLTsResource:
             ),
             params=query,
         )
-        return cast(Dict[str, Any], response)
+        return cast(dict[str, Any], response)
 
     def resolve_onu_key(
         self,
@@ -93,7 +93,7 @@ class OLTsResource:
         return self.get_onu_detail(site_id=site_id, olt_mac=olt_mac, onu_key=onu_key, params=params)
 
     @staticmethod
-    def _extract_items(payload: dict[str, Any]) -> List[Any]:
+    def _extract_items(payload: dict[str, Any]) -> list[Any]:
         for key in ("data", "result", "items", "list"):
             value = payload.get(key)
             if isinstance(value, list):

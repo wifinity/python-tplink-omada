@@ -8,7 +8,7 @@ class DummyDevicesResource:
     def __init__(self) -> None:
         self.calls = []
 
-    def list(self, *, site_id: str, page: int = 1, page_size: int = 1000, **params):
+    def all(self, *, site_id: str, page: int = 1, page_size: int = 1000, **params):
         self.calls.append(("list", site_id, page, page_size, params))
         search_key = params.get("searchKey")
         if search_key == "AA-BB-CC-DD-EE-FF":

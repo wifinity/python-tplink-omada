@@ -79,7 +79,7 @@ def test_device_canonical_methods_call_expected_paths() -> None:
     client = DummyClient()
     resource = DevicesResource(client)
 
-    listed = resource.list(site_id="s1")
+    listed = resource.all(site_id="s1")
     by_mac = resource.get_by_mac(site_id="s1", mac="00:11:22:33:44:55")
     ap_by_mac = resource.get_by_mac(site_id="s1", mac="aa:bb:cc:dd:ee:ff", device_type="ap")
     created = resource.create(site_id="s1", device_data={"sn": "abc"})
@@ -183,7 +183,7 @@ def test_device_canonical_methods_use_api_path_rewrite() -> None:
     client = OmadacPathDummyClient()
     resource = DevicesResource(client)
 
-    resource.list(site_id="s1", page=2, page_size=50)
+    resource.all(site_id="s1", page=2, page_size=50)
     resource.get_by_mac(site_id="s1", mac="aa:bb:cc:dd:ee:ff", device_type="ap")
     resource.create(site_id="s1", device_data={"sn": "abc"})
     resource.start_adopt(site_id="s1", mac="aa:bb:cc:dd:ee:ff")
