@@ -9,6 +9,7 @@ from .olts import OLTsResource
 from .radius_profiles import RadiusProfilesResource
 from .site_services import SiteServicesResource
 from .sites import SitesResource
+from .switch_dot1x import SwitchDot1xResource
 from .switches import SwitchesResource
 from .wifi_networks import WiFiNetworksResource
 from .wlan_groups import WLANGroupsResource
@@ -26,4 +27,5 @@ __all__ = [
     "APsResource",
     "OLTsResource",
     "SwitchesResource",
+    "SwitchDot1xResource",
 ]
