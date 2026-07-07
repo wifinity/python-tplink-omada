@@ -39,6 +39,10 @@ print(site)
 
 ## Usage
 
+Each resource is reached from a single `OmadaClient` instance via a named accessor
+(for example `client.sites`, `client.aps`). Sections below are grouped by area:
+**sites**, **devices**, **wireless**, **networking**, and **optics**.
+
 ### Client Initialization
 
 ```python
@@ -52,30 +56,27 @@ client = OmadaClient(
 )
 ```
 
-### Creating Sites
+### Sites
 
-`client.sites.create()` now includes defaults for Omada-required fields:
+`client.sites` manages Omada sites. Create and update include defaults for
+Omada-required fields:
 
-- `region` defaults to `"United Kingdom"`
-- `scenario` defaults to `"Dormitory"`
-- `time_zone` defaults to `"UTC"` (mapped to API field `timeZone`)
+- `region` defaults to `"United Kingdom"` — validated as a full country name, so
+  ISO codes like `GB`/`GBR` are rejected with a clear error.
+- `scenario` defaults to `"Dormitory"`.
+- `time_zone` defaults to `"UTC"` (mapped to API field `timeZone`).
 
-Device credentials are exposed as explicit parameters:
-
-- `device_username`
-- `device_password`
-
-Both must be provided together unless you pass a raw `deviceAccountSetting` object in `**kwargs`.
-`region` is validated as a full country name (for example, `United Kingdom`), and ISO
-codes like `GB`/`GBR` are rejected with a clear error.
+Device credentials are explicit parameters (`device_username`, `device_password`)
+and must be provided together unless you pass a raw `deviceAccountSetting` object
+in `**kwargs`.
 
 ```python
+# Create a site (with defaults, then with explicit fields)
 site = client.sites.create(
     name="Main Site",
     device_username="omada-admin",
     device_password="StrongPassword!123",
 )
-
 site_custom = client.sites.create(
     name="London HQ",
     region="United Kingdom",
@@ -84,21 +85,8 @@ site_custom = client.sites.create(
     device_username="site-admin",
     device_password="AnotherStrongPassword!123",
 )
-```
 
-### Updating Sites
-
-Use `client.sites.update(...)` to update an existing site by id. It accepts the
-same field set used for site create flows:
-
-- `name`
-- `region`
-- `scenario`
-- `timezone` (mapped to API field `timeZone`)
-- `device_username`
-- `device_password`
-
-```python
+# Update an existing site by id (same field set; `timezone` maps to `timeZone`)
 updated_site = client.sites.update(
     id="your-site-id",
     name="London HQ",
@@ -108,166 +96,158 @@ updated_site = client.sites.update(
     device_username="site-admin",
     device_password="AnotherStrongPassword!123",
 )
-```
 
-### Reading Sites
-
-Use `client.sites.all()` to fetch all sites and `client.sites.get(...)` to resolve one site.
-
-```python
+# List all sites, or resolve one by id or name
 all_sites = client.sites.all()
-print(all_sites)
-
 site_by_id = client.sites.get(id="your-site-id")
-print(site_by_id)
-
 site_by_name = client.sites.get(name="johantest")
-print(site_by_name)
+
+# Paging (defaults are page=1, pageSize=1000) and server-side search
+sites_page_2 = client.sites.all(params={"page": 2, "pageSize": 50})
+filtered_sites = client.sites.all(params={"searchKey": "johan", "page": 1, "pageSize": 100})
 ```
 
-`client.sites.get(name=...)` resolves the matching `siteId` and then fetches the canonical
-`/sites/{siteId}` entity, so it returns the same detail shape as `client.sites.get(id=...)`.
+`client.sites.get(name=...)` resolves the matching `siteId` and then fetches the
+canonical `/sites/{siteId}` entity, so it returns the same detail shape as
+`client.sites.get(id=...)`.
 
-#### Site query examples
+### Site Services
+
+`client.site_services` manages site-level service settings (currently SNMP).
 
 ```python
-# First page (defaults are page=1, pageSize=1000)
-sites_page_1 = client.sites.all()
+# Read SNMP settings for a site
+snmp = client.site_services.get_snmp(site_id="your-site-id")
 
-# Explicit paging
-sites_page_2 = client.sites.all(params={"page": 2, "pageSize": 50})
+# Update SNMP settings
+client.site_services.update_snmp(
+    site_id="your-site-id",
+    snmpv1v2c_enable=True,
+    snmpv3_enable=False,
+    community_string="public",
+)
+```
 
-# Server-side search with paging override
-filtered_sites = client.sites.all(
-    params={"searchKey": "johan", "page": 1, "pageSize": 100}
+`update_snmp` requires `snmpv1v2c_enable` and `snmpv3_enable`; `community_string`,
+`username`, and `password` are optional and only sent when provided.
+
+### Devices
+
+`client.devices` is the canonical shared endpoint/action layer for device
+CRUD-like operations. Typed resources such as `client.aps` and `client.switches`
+are thin facades that reuse `client.devices` with device-type-specific defaults;
+new device resources should follow the same facade-over-devices pattern.
+
+```python
+# Start adopt by MAC (optionally with device login credentials)
+adopt_result = client.devices.start_adopt(
+    site_id="your-site-id",
+    mac="AA-BB-CC-DD-EE-FF",
+    username="admin",             # optional; defaults to "admin"
+    password="device-password",   # optional; defaults to "admin"
 )
 
-# Canonical detail by id
-site_detail = client.sites.get(id="your-site-id")
-
-# Same canonical detail by name lookup
-site_detail_by_name = client.sites.get(name="johantest")
-```
-
-### Access Points
-
-Use `client.aps` for AP-focused workflows:
-
-```python
-# Retrieve all APs in a site (delegates to canonical devices.all with AP filter)
-aps = client.aps.all(site_id="your-site-id")
-
-# Get AP DeviceInfo by MAC (same item shape as /devices list data entries)
-ap_device = client.aps.get_by_mac(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
-
-# Get AP DeviceInfo by AP name
-ap_device_by_name = client.aps.get_by_name(site_id="your-site-id", name="Lobby-AP-01")
-
-# Get AP overview payload by MAC (ApOverviewInfo-style endpoint)
-ap_overview = client.aps.get_overview_by_mac(
+# Check the latest adopt result by MAC (adds decoded meanings)
+adopt_status = client.devices.check_adopt(
     site_id="your-site-id",
     mac="AA-BB-CC-DD-EE-FF",
 )
-# ap_overview["result"]["wlanGroupName"] is added when wlanId can be resolved via wlan_groups.get
-# (id lookup scans the WLAN group list; there is no per-group GET by wlan group id).
+# adopt_status["result"]["adoptErrorMeaning"]
+# adopt_status["result"]["adoptFailedTypeMeaning"]
+```
 
-# Switch AP WLAN group by group id or exact group name
+`start_adopt` always sends a JSON body with `username` and `password` (both
+default to `admin`). `check_adopt` calls `/adopt-result`, preserves the raw
+`adoptErrorCode`/`adoptFailedType` fields, and adds `adoptErrorMeaning`/
+`adoptFailedTypeMeaning` derived from the Omada `AdoptResult` descriptions.
+
+MAC inputs are validated and normalized with the `macaddress` package. Public
+methods that accept `mac` support common EUI-48 forms (for example
+`AA:BB:CC:DD:EE:FF`, `AA-BB-CC-DD-EE-FF`, `AABBCCDDEEFF`, and `aabb.ccdd.eeff`)
+and always send `AA-BB-CC-DD-EE-FF` to the API. For DeviceInfo-shaped responses
+(for example `client.devices.get_by_mac(...)`), when numeric `status`/`detailStatus`
+are present the response also includes `statusMeaning` and `detailStatusMeaning`;
+unknown codes are preserved and get deterministic fallbacks like
+`Unknown status: <code>`.
+
+### Access Points
+
+`client.aps` provides AP-focused workflows as a typed facade over `client.devices`
+(filtering the device list to APs).
+
+```python
+# List all APs in a site
+aps = client.aps.all(site_id="your-site-id")
+
+# Look up AP DeviceInfo by MAC or by name
+ap_device = client.aps.get_by_mac(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
+ap_device_by_name = client.aps.get_by_name(site_id="your-site-id", name="Lobby-AP-01")
+
+# AP overview payload by MAC (adds result.wlanGroupName when wlanId resolves)
+ap_overview = client.aps.get_overview_by_mac(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
+
+# Wired uplink detail by MAC (adds decoded *Meaning fields)
+ap_wired_uplink = client.aps.get_wired_uplink_by_mac(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
+
+# Switch an AP to a target WLAN group (by group id or exact name)
 switch_result = client.aps.set_wlan_group_by_mac(
     site_id="your-site-id",
     mac="AA-BB-CC-DD-EE-FF",
     wlan_group="Corp",
 )
 
-# Get AP wired uplink detail by MAC
-ap_wired_uplink = client.aps.get_wired_uplink_by_mac(
-    site_id="your-site-id",
-    mac="AA-BB-CC-DD-EE-FF",
-)
-
-# Delete/forget AP by MAC
-ap = client.aps.delete(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
-
-# Create/register AP in a site (device key onboarding flow)
+# Register, update, adopt, and delete
 created_ap = client.aps.create(site_id="your-site-id", device_key="ZTP-DEVICE-KEY")
-
-# Start AP adopt by MAC (AP facade shortcut to devices.start_adopt)
-ap_adopt_result = client.aps.start_adopt(
-    site_id="your-site-id",
-    mac="AA-BB-CC-DD-EE-FF",
-)
-
-# Check AP adopt result by MAC (AP facade shortcut to devices.check_adopt)
-ap_adopt_status = client.aps.check_adopt(
-    site_id="your-site-id",
-    mac="AA-BB-CC-DD-EE-FF",
-)
-
-# Update AP general config by MAC
-ap_update = client.aps.update(
-    site_id="your-site-id",
-    mac="AA-BB-CC-DD-EE-FF",
-    data={"name": "hostname"},
-)
+client.aps.update(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF", data={"name": "hostname"})
+client.aps.start_adopt(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
+client.aps.check_adopt(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
+client.aps.delete(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
 ```
 
-`client.aps.get_by_mac(...)` and `client.aps.get_by_name(...)` return DeviceInfo-style
-records resolved from the AP-filtered device list flow.
-When AP MAC lookup misses, `client.aps.get_by_mac(...)` raises `DeviceNotFoundError`.
-`client.aps.get_overview_by_mac(...)` exposes the dedicated AP overview endpoint and can
-return a different result shape. When a `wlanId` (or legacy `wlan group id`) is present
-and resolvable, it also adds `result.wlanGroupName`.
-`client.aps.set_wlan_group_by_mac(...)` switches an AP to a target WLAN group through the
-AP WLAN-group endpoint. `wlan_group` accepts either a WLAN group id or exact name.
-`client.aps.get_wired_uplink_by_mac(...)` exposes the dedicated AP wired uplink endpoint.
-For numeric wired-uplink fields, the client preserves raw values and also adds:
-- `portTypeMeaning`
-- `linkStatusMeaning`
-- `linkSpeedMeaning`
-- `duplexMeaning`
-Unknown codes are preserved and mapped to deterministic fallback strings (for example
-`Unknown linkSpeed: <code>`).
-When `status` and `detailStatus` are present on DeviceInfo records, the client also adds
-`statusMeaning` and `detailStatusMeaning` with decoded human-readable labels.
-`client.aps.start_adopt(...)` and `client.aps.check_adopt(...)` are thin shortcut methods
-that delegate to the canonical `client.devices` adopt operations.
+`get_by_mac`/`get_by_name` return DeviceInfo-style records resolved from the
+AP-filtered device list; `get_by_mac` raises `DeviceNotFoundError` on a miss.
+`get_overview_by_mac` uses the dedicated AP overview endpoint (a different result
+shape) and adds `result.wlanGroupName` when a `wlanId` (or legacy WLAN group id)
+is present and resolvable via `wlan_groups.get` — the id lookup scans the WLAN
+group list, as there is no per-group GET by id. `get_wired_uplink_by_mac`
+preserves raw numeric fields and adds `portTypeMeaning`, `linkStatusMeaning`,
+`linkSpeedMeaning`, and `duplexMeaning` (unknown codes map to deterministic
+fallbacks like `Unknown linkSpeed: <code>`). `start_adopt`/`check_adopt` are thin
+shortcuts that delegate to the canonical `client.devices` adopt operations.
+
+### AP Groups
+
+`client.ap_groups` creates AP groups in a site. The `group_data` body is passed
+through to the Omada API unchanged.
+
+```python
+created_group = client.ap_groups.create(
+    site_id="your-site-id",
+    group_data={"name": "Lobby APs"},
+)
+```
 
 ### Switches
 
-Use `client.switches` for switch onboarding workflows:
+`client.switches` provides switch onboarding and configuration workflows as a
+typed facade over `client.devices` (filtering via `deviceType="switch"` and
+delegating adopt operations to `client.devices.start_adopt(...)` /
+`client.devices.check_adopt(...)`).
 
 ```python
-# Retrieve all switches in a site (delegates to canonical devices.all with switch filter)
+# List all switches, or look up one by MAC or name
 switches = client.switches.all(site_id="your-site-id")
-
-# Get switch DeviceInfo by MAC
 switch_device = client.switches.get_by_mac(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
-
-# Get switch DeviceInfo by switch name
 switch_device_by_name = client.switches.get_by_name(site_id="your-site-id", name="Core-SW-01")
 
-# Create/register switch in a site (device key onboarding flow)
-created_switch = client.switches.create(
-    site_id="your-site-id",
-    device_key="ZTP-DEVICE-KEY",
-)
-
-# Start switch adopt by MAC (switch facade shortcut to devices.start_adopt)
-switch_adopt_result = client.switches.start_adopt(
-    site_id="your-site-id",
-    mac="AA-BB-CC-DD-EE-FF",
-)
-
-# Check switch adopt result by MAC (switch facade shortcut to devices.check_adopt)
-switch_adopt_status = client.switches.check_adopt(
-    site_id="your-site-id",
-    mac="AA-BB-CC-DD-EE-FF",
-)
-
-# Delete/forget switch by MAC
-forgotten = client.switches.delete(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
+# Register, adopt, and delete
+created_switch = client.switches.create(site_id="your-site-id", device_key="ZTP-DEVICE-KEY")
+client.switches.start_adopt(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
+client.switches.check_adopt(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
+client.switches.delete(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
 ```
 
-LAN port profiles are managed dict-first (the caller builds the
+**LAN port profiles** are managed dict-first (the caller builds the
 `LanProfileSettingOpenApiVO` body; the SDK passes it through unchanged):
 
 ```python
@@ -282,7 +262,7 @@ profile = {
     "spanningTreeEnable": True,
 }
 
-# Create a profile -> {"id": "<newProfileId>"}
+# Create -> {"id": "<newProfileId>"}
 created = client.switches.create_port_profile(site_id="your-site-id", profile=profile)
 
 # Update by explicit id, or resolve the id from profile["name"] when omitted
@@ -296,7 +276,7 @@ result, was_created = client.switches.upsert_port_profile(site_id="your-site-id"
 client.switches.delete_port_profile(site_id="your-site-id", name="role-uplink")
 ```
 
-Per-port config is applied one port at a time with `update_switch_port`. The
+**Per-port config** is applied one port at a time with `update_switch_port`. The
 `settings` dict is an `OswPortSettingVO` passed through unchanged (no validation,
 translation, or defaulting). VLAN fields take Omada LAN network IDs — resolve VLAN
 numbers first via `client.lan_networks.vlan_id_to_network_id`. Admin enable/disable
@@ -320,48 +300,63 @@ client.switches.update_switch_port(
 )
 ```
 
-`client.switches` follows the same typed-facade-over-devices pattern as `client.aps`.
-It filters list/lookup calls via `deviceType=\"switch\"` and delegates adopt operations
-to the canonical `client.devices.start_adopt(...)` and `client.devices.check_adopt(...)`.
+### Switch 802.1X
 
-### Wireless Network Groups
-
-Use `client.wlan_groups` for WLAN group workflows:
+`client.switch_dot1x` manages switch global (system) 802.1X settings, which Omada
+scopes as a single **per-site** resource (not per switch). Bodies are dict-first
+(passed through unchanged), so the caller owns building and reconciling them via
+read-modify-write.
 
 ```python
-# List WLAN groups in a site
-wlan_groups = client.wlan_groups.all(site_id="your-site-id")
+# Read the site's current switch 802.1X setting (Dot1xSwitchResOpenApiVO; {} if never configured)
+current = client.switch_dot1x.get(site_id="your-site-id")
 
-# Create a WLAN group
-created_group = client.wlan_groups.create(
-    site_id="your-site-id",
-    name="Corp",
-)
+# Resolve the RADIUS profile id referenced by radiusProfileId
+profile = client.radius_profiles.get(site_id="your-site-id", name="My RADIUS Profile")
 
-# Resolve a WLAN group by name
-wlan_group = client.wlan_groups.get(
+# Update (Dot1xSwitchOpenApiVO body)
+client.switch_dot1x.update(
     site_id="your-site-id",
-    name="Corp",
-)
-
-# Delete a WLAN group by name
-delete_result = client.wlan_groups.delete(
-    site_id="your-site-id",
-    name="Corp",
+    settings={
+        "enable": True,
+        "authMode": 1,        # 0 PAP, 1 EAP
+        "authType": 0,        # 0 port-based, 1 mac-based
+        "mab": False,
+        "macFormat": 0,
+        "radiusProfileId": profile["radiusProfileId"],
+        "vlanAssign": False,
+    },
 )
 ```
 
-`client.wlan_groups.get(...)` and `client.wlan_groups.delete(...)` require exactly one
-selector (`id` or `name`). Name-based operations use exact-name matching and raise
-`WLANGroupNotFoundError` for missing groups, and `ValueError` for ambiguous matches.
-`client.wlan_groups.create(...)` accepts `name` directly and defaults `clone=False`
-unless explicitly overridden in `group_data`.
+`get` returns the current setting with `result` unwrapped and does **not** echo the
+per-port `switches` array. `update` requires `authMode`, `authType`, `enable`,
+`mab`, `macFormat`, `radiusProfileId`, and `vlanAssign`; optional keys include
+`guestVlan`, `nasId`, and the per-port `switches` array (`dot1xPorts`/`mabPorts`
+keyed by switch `mac`). Read-modify-write so unmanaged required fields and the
+per-port array are preserved.
+
+### Wireless Network Groups
+
+`client.wlan_groups` manages WLAN groups within a site.
+
+```python
+wlan_groups = client.wlan_groups.all(site_id="your-site-id")
+created_group = client.wlan_groups.create(site_id="your-site-id", name="Corp")
+wlan_group = client.wlan_groups.get(site_id="your-site-id", name="Corp")
+delete_result = client.wlan_groups.delete(site_id="your-site-id", name="Corp")
+```
+
+`get` and `delete` require exactly one selector (`id` or `name`). Name-based
+operations use exact-name matching and raise `WLANGroupNotFoundError` for missing
+groups and `ValueError` for ambiguous matches. `create` accepts `name` directly
+and defaults `clone=False` unless overridden in `group_data`.
 
 ### Wi-Fi Networks
 
-Use `client.wifi_networks` for SSID workflows scoped to a site and WLAN group. Omada always requires **`site_id`** and **`wlan_group`** (WLAN group id or name); there is no controller-wide SSID list.
-
-**Order: list → get → filter → create → update → delete:**
+`client.wifi_networks` manages SSIDs scoped to a site and WLAN group. Omada always
+requires **`site_id`** and **`wlan_group`** (WLAN group id or name); there is no
+controller-wide SSID list.
 
 ```python
 from omada_client import strip_ssid_detail_for_create
@@ -369,46 +364,54 @@ from omada_client import strip_ssid_detail_for_create
 site_id = "your-site-id"
 wlan_group = "Corp"
 
-# List SSIDs under the WLAN group
+# List, get (by id or exact broadcast name), and client-side filter
 wifi_networks = client.wifi_networks.all(site_id=site_id, wlan_group=wlan_group)
-
-# Get one SSID by id or by exact broadcast name (JSON field `name`)
 wifi_network = client.wifi_networks.get(site_id=site_id, wlan_group=wlan_group, name="GuestSSID")
+filtered = client.wifi_networks.filter(site_id=site_id, wlan_group=wlan_group, ssid="Guest")  # `ssid` aliases `name`
 
-# Filter list items (client-side); use `ssid=` as an alias for broadcast `name`
-filtered = client.wifi_networks.filter(site_id=site_id, wlan_group=wlan_group, ssid="Guest")
-
-# Create (see expanded examples below for security types)
+# Create (see security types and further examples below)
 created = client.wifi_networks.create(
-    site_id=site_id,
-    wlan_group=wlan_group,
-    type="psk",
-    name="GuestSSID",
-    psk="StrongPassphrase123!",
+    site_id=site_id, wlan_group=wlan_group, type="psk", name="GuestSSID", psk="StrongPassphrase123!",
 )
 
-# Update basic SSID fields: merges GET detail with `network_data` / kwargs, then PATCHes
-# `.../update-basic-config` (Omada has no `PUT .../ssids/{id}`)
+# Update basic SSID fields (PATCHes .../update-basic-config; Omada has no PUT .../ssids/{id})
 client.wifi_networks.update_basic_config(
-    site_id=site_id,
-    wlan_group=wlan_group,
-    id="existing-ssid-id",
-    network_data={"ssid": "UpdatedSSID"},  # `ssid` is an alias for Omada `name`
+    site_id=site_id, wlan_group=wlan_group, id="existing-ssid-id",
+    network_data={"ssid": "UpdatedSSID"},  # `ssid` aliases Omada `name`
 )
 
 # Delete by id or name (Omada has no `deep=` delete flag)
-delete_result = client.wifi_networks.delete(
-    site_id=site_id,
-    wlan_group=wlan_group,
-    name="UpdatedSSID",
-)
+client.wifi_networks.delete(site_id=site_id, wlan_group=wlan_group, name="UpdatedSSID")
 ```
 
-`filter(...)` only accepts documented criterion keys (unknown keys raise `ValueError`). When criteria are only broadcast-name selectors (`name` and/or matching `ssid`), the list call uses `searchKey` for a smaller response, then applies exact equality client-side.
+`filter` only accepts documented criterion keys (unknown keys raise `ValueError`).
+When criteria are only broadcast-name selectors (`name` and/or matching `ssid`),
+the list call uses `searchKey` for a smaller response, then applies exact equality
+client-side. `update_basic_config` loads the current SSID detail, projects it to
+`UpdateSsidBasicConfigOpenApiVO`, merges overrides, and PATCHes (use the package
+helper `ssid_detail_to_basic_config_patch` if you build PATCH bodies yourself);
+other PATCH routes (rate limit, schedule, …) are not covered by this method.
 
-`update_basic_config(...)` loads the current SSID detail, projects it to `UpdateSsidBasicConfigOpenApiVO`, merges overrides, and PATCHes. Use package helper `ssid_detail_to_basic_config_patch` if you build PATCH bodies yourself. Other SSID PATCH routes (rate limit, schedule, …) are not covered by this method.
+**Supported `type` values** (string `type` maps to Omada `security`):
 
-Further examples (security types, VLAN, cloning):
+- `open` (`security=0`; optional `guest_network=True/False` for `guestNetEnable`)
+- `open-isolated` (`security=0`, `guestNetEnable=True`; open SSID with client isolation)
+- `aaa` (`security=2`; requires `ent_setting`)
+- `psk` (`security=3`; requires `psk` or `psk_setting`)
+- `ppsk_local` (`security=4`; requires `psk` or `psk_setting` **and** `ppsk_setting`; alias `ppsk-local`)
+- `dpsk` (`security=5`; requires `ppsk_setting`, PPSK with RADIUS)
+
+`hotspot20` is not supported in the SDK (raises a clear error); use raw
+`client.get`/`post` if you must drive HotspotV2 APIs. `network_data` must not
+include `name`; set the broadcast SSID via `ssid` and/or `name`.
+
+`create()` is **not atomic**: it POSTs the SSID, then runs the opt-in
+`multicast_config` / `rate_control` / `rate_limit_profile_name` PATCHes. If a PATCH
+fails after the POST, `create()` raises `WiFiNetworkPartiallyConfiguredError` — the
+SSID already exists, and the exception carries `ssid_id`, `failed_step`, and
+`completed_steps` so you can retry the failed step or delete the SSID.
+
+**Further examples — security types, VLAN, multicast, rate control, and cloning:**
 
 ```python
 from omada_client import strip_ssid_detail_for_create
@@ -423,9 +426,6 @@ created_wifi_network = client.wifi_networks.create(
     vlan=102,
     # pmf_mode defaults to 3 for psk (wpa_basic.json); pass pmf_mode=2 for PMF capable
 )
-
-# Corporate PPSK (security=4) — profile-based
-# Alias type="ppsk-local" is accepted.
 
 # PPSK with RADIUS (security=5) — profile IDs as parameters (vlan= builds vlanSetting pool shape)
 created_dpsk_network = client.wifi_networks.create(
@@ -466,16 +466,27 @@ SECURED_MULTICAST = {
     "filterEnable": False,
 }
 
+# Rate control: caller supplies flat PATCH fields (the rateControl key in GET detail is not the PATCH body).
+RATE_CONTROL = {
+    "rate2gCtrlEnable": True,
+    "lowerDensity2g": 12,
+    "higherDensity2g": 54,
+    "rate5gCtrlEnable": True,
+    "lowerDensity5g": 12,
+    "higherDensity5g": 54,
+}
+
 # Open isolated (type=open-isolated sets guestNetEnable; vlan= builds standard vlan pool setting)
-created_open_isolated = client.wifi_networks.create(
+# POST then opt-in PATCHes: multicast, rate-control, rate-limit
+created_open_isolated_with_rate = client.wifi_networks.create(
     site_id="your-site-id",
     wlan_group="Corp",
     type="open-isolated",
     ssid="Guest",
     vlan=98,
     multicast_config=GUEST_MULTICAST,
-    # Rate-limit is opt-in: pass rate_limit_profile_name to attach a site profile by name:
-    # rate_limit_profile_name="Default",
+    rate_control=RATE_CONTROL,
+    rate_limit_profile_name="Default",  # attach a site rate-limit profile by exact name
 )
 
 # PPSK / DPSK with secured multicast (wpa.json / dpsk_radius.json parity)
@@ -487,51 +498,6 @@ created_ppsk_with_multicast = client.wifi_networks.create(
     vlan=999,
     ppsk_profile_name="My_PPSK_Profile",
     multicast_config=SECURED_MULTICAST,
-)
-
-# Rate control: caller supplies flat PATCH fields (not nested under rateControl).
-# Rate control: caller supplies flat PATCH fields (rateControl key in GET detail is not the PATCH body).
-RATE_CONTROL = {
-    "rate2gCtrlEnable": True,
-    "lowerDensity2g": 12,
-    "higherDensity2g": 54,
-    "rate5gCtrlEnable": True,
-    "lowerDensity5g": 12,
-    "higherDensity5g": 54,
-}
-created_open_isolated_with_rate = client.wifi_networks.create(
-    site_id="your-site-id",
-    wlan_group="Corp",
-    type="open-isolated",
-    ssid="Guest",
-    vlan=98,
-    multicast_config=GUEST_MULTICAST,
-    rate_control=RATE_CONTROL,
-    rate_limit_profile_name="Default",  # POST then opt-in PATCHes: multicast, rate-control, rate-limit
-)
-
-# Standalone multicast PATCH on an existing SSID
-client.wifi_networks.update_multicast_config(
-    site_id="your-site-id",
-    wlan_group="Corp",
-    name="Guest",
-    multicast_config=GUEST_MULTICAST,
-)
-
-# Standalone rate-control PATCH on an existing SSID
-client.wifi_networks.update_rate_control(
-    site_id="your-site-id",
-    wlan_group="Corp",
-    name="Guest",
-    rate_control=RATE_CONTROL,
-)
-
-# Standalone rate-limit profile attachment (resolves the named site profile)
-client.wifi_networks.update_rate_limit(
-    site_id="your-site-id",
-    wlan_group="Corp",
-    name="Guest",
-    rate_limit_profile_name="Default",  # exact Omada rate-limit profile name
 )
 
 # Omada vlanSetting (mutually exclusive with vlan= integer shortcut)
@@ -546,11 +512,21 @@ created_vlan_setting = client.wifi_networks.create(
     },
 )
 
+# Standalone PATCHes on an existing SSID
+client.wifi_networks.update_multicast_config(
+    site_id="your-site-id", wlan_group="Corp", name="Guest", multicast_config=GUEST_MULTICAST,
+)
+client.wifi_networks.update_rate_control(
+    site_id="your-site-id", wlan_group="Corp", name="Guest", rate_control=RATE_CONTROL,
+)
+client.wifi_networks.update_rate_limit(
+    site_id="your-site-id", wlan_group="Corp", name="Guest",
+    rate_limit_profile_name="Default",  # exact Omada rate-limit profile name
+)
+
 # Clone from GET detail: strip read-only keys; match `type` to `security` in the trimmed payload
 detail = client.wifi_networks.get(
-    site_id="your-site-id",
-    wlan_group="Corp",
-    id="existing-ssid-id",
+    site_id="your-site-id", wlan_group="Corp", id="existing-ssid-id",
 )
 base = strip_ssid_detail_for_create(detail)
 base.pop("name", None)  # broadcast name comes from create(ssid=...)
@@ -564,98 +540,10 @@ client.wifi_networks.create(
 )
 ```
 
-Supported `type` values (string `type` maps to Omada `security`):
-
-- `open` (`security=0`; optional `guest_network=True/False` for `guestNetEnable`)
-- `open-isolated` (`security=0`, `guestNetEnable=True`; open SSID with client isolation)
-- `aaa` (`security=2`; requires `ent_setting`)
-- `psk` (`security=3`; requires `psk` or `psk_setting`)
-- `ppsk_local` (`security=4`; requires `psk` or `psk_setting` **and** `ppsk_setting`)
-- `dpsk` (`security=5`; requires `ppsk_setting`, PPSK with RADIUS)
-
-`hotspot20` is not supported in the SDK (raise a clear error); use raw `client.get`/`post` if you must drive HotspotV2 APIs.
-
-`network_data` must not include `name`; set the broadcast SSID via `ssid` and/or `name`.
-
-`create()` is not atomic: it POSTs the SSID, then runs the opt-in `multicast_config` / `rate_control` / `rate_limit_profile_name` PATCHes. If a PATCH fails after the POST, `create()` raises `WiFiNetworkPartiallyConfiguredError` — the SSID already exists, and the exception carries `ssid_id`, `failed_step`, and `completed_steps` so you can retry the failed step or delete the SSID.
-
-### Devices
-
-```python
-# Start adopt by MAC using named parameters
-adopt_result = client.devices.start_adopt(
-    site_id="your-site-id",
-    mac="AA-BB-CC-DD-EE-FF",
-)
-
-# Optionally provide device login credentials for adoption
-adopt_result = client.devices.start_adopt(
-    site_id="your-site-id",
-    mac="AA-BB-CC-DD-EE-FF",
-    username="admin",
-    password="device-password",
-)
-
-# Check latest adopt result by MAC and get decoded meanings
-adopt_status = client.devices.check_adopt(
-    site_id="your-site-id",
-    mac="AA-BB-CC-DD-EE-FF",
-)
-# adopt_status["result"]["adoptErrorMeaning"]
-# adopt_status["result"]["adoptFailedTypeMeaning"]
-```
-
-`start_adopt` always sends a JSON body with `username` and `password`. When not
-provided, both fields default to `admin`.
-
-`check_adopt` calls `/adopt-result` and preserves the raw fields (`adoptErrorCode`,
-`adoptFailedType`) while adding `adoptErrorMeaning` and `adoptFailedTypeMeaning`
-derived from the Omada OpenAPI `AdoptResult` descriptions.
-
-MAC inputs are validated and normalized with the `macaddress` package. Public methods
-that accept `mac` support common EUI-48 forms (for example `AA:BB:CC:DD:EE:FF`,
-`AA-BB-CC-DD-EE-FF`, `AABBCCDDEEFF`, and `aabb.ccdd.eeff`) and always send
-`AA-BB-CC-DD-EE-FF` to the Omada API.
-
-For DeviceInfo-shaped lookup responses (for example `client.devices.get_by_mac(...)` and
-`client.aps.get_by_mac(...)`), when numeric `status`/`detailStatus` are present, the
-response also includes:
-- `statusMeaning`
-- `detailStatusMeaning`
-
-Unknown numeric codes are preserved and get deterministic fallback strings:
-- `Unknown status: <code>`
-- `Unknown detailStatus: <code>`
-
-### Device Resource Architecture
-
-`client.devices` is the canonical shared endpoint/action layer for device CRUD-like operations.
-Typed resources such as `client.aps` are thin facades that reuse `client.devices` with
-device-type-specific defaults and options. Future resources (for example switches) should
-follow the same facade-over-devices pattern.
-
-### OLT / ONU optics (GPON)
-
-Use `client.olts` to query ONU optical telemetry from an upstream OLT. The Omada API requires an ONU **`key`**
-identifier for detail telemetry; this SDK provides a MAC-based convenience method that resolves the key via the
-ONU list endpoint.
-
-```python
-onu_detail = client.olts.get_onu_detail_by_mac(
-    site_id="your-site-id",
-    olt_mac="AA-BB-CC-DD-EE-FF",
-    pon_port="GPON 1/1/1",
-    onu_mac="11-22-33-44-55-66",
-)
-
-# Raw Omada payload, for example:
-# onu_detail["result"]["onuOpticalLinkInformation"]["receivedOpticalPower"]
-# onu_detail["result"]["onuOpticalLinkInformation"]["transmittedOpticalPower"]
-```
-
 ### LAN Networks
 
-Use `client.lan_networks` to manage 802.1Q VLAN definitions (Omada "LAN networks") for a site.
+`client.lan_networks` manages 802.1Q VLAN definitions (Omada "LAN networks") for a
+site.
 
 ```python
 # List all LAN networks on a site
@@ -672,7 +560,7 @@ created = client.lan_networks.create(
     vlan_id=98,
 )
 
-# Update a network — reads current state then merges; pass only the fields you want to change
+# Update — reads current state then merges; pass only the fields you want to change
 client.lan_networks.update(
     site_id="your-site-id",
     vlan_id=98,
@@ -682,15 +570,120 @@ client.lan_networks.update(
 # Delete a network
 client.lan_networks.delete(site_id="your-site-id", vlan_id=98)
 
-# Build a {vlan_id: network_id} lookup dict — useful when resolving VLAN integers
-# to Omada network ID strings for port-profile or port-override configuration
+# Build a {vlan_id: network_id} lookup — useful when resolving VLAN integers to Omada
+# network ID strings for port-profile or port-override configuration
 lookup = client.lan_networks.vlan_id_to_network_id(site_id="your-site-id")
 ```
 
-`get()`, `update()`, and `delete()` each accept exactly one of `network_id` (Omada string ID) or
-`vlan_id` (integer). `update()` fetches the current network before PATCHing — the Omada API
-requires the full object on PATCH, so this approach avoids callers having to supply every field.
-`create()` accepts an optional `dhcp_server_enabled` parameter (default `False`).
+`get()`, `update()`, and `delete()` each accept exactly one of `network_id` (Omada
+string ID) or `vlan_id` (integer). `update()` fetches the current network before
+PATCHing — the Omada API requires the full object on PATCH, so this avoids callers
+having to supply every field. `create()` accepts an optional `dhcp_server_enabled`
+parameter (default `False`).
+
+### DHCP Snooping
+
+`client.dhcp_snooping` manages DHCP snooping for a site. Omada models it in two
+layers: a **site-wide master enable** (`/dhcpSnoops/status`) and **per-device
+snoop entries** (`/dhcpSnoops`) listing the client-facing / *untrusted* ports (the
+uplink/cascade port is auto-excluded and surfaces in `unSelectedablePorts` on
+`get_supported`). Bodies are dict-first — the caller builds the entry shapes.
+
+```python
+# Site-wide master enable
+enabled = client.dhcp_snooping.get_status(site_id="your-site-id")
+client.dhcp_snooping.set_status(site_id="your-site-id", enabled=True)
+
+# List existing snoop entries and switches that support snooping (with selectable ports)
+snoops = client.dhcp_snooping.get_snoops(site_id="your-site-id")
+supported = client.dhcp_snooping.get_supported(site_id="your-site-id")
+
+# Create per-device entries (the mandatory `devices` envelope is applied for you)
+client.dhcp_snooping.create_snoops(
+    site_id="your-site-id",
+    devices=[{"mac": "AA-BB-CC-DD-EE-FF", "ports": [{"port": 1}, {"port": 2}]}],
+)
+
+# Modify or delete one entry, or find an entry by device MAC
+client.dhcp_snooping.update_snoop(
+    site_id="your-site-id",
+    snoop_id="<snoopId>",
+    settings={"mac": "AA-BB-CC-DD-EE-FF", "name": "Core-SW", "ports": [{"port": 1}]},
+)
+client.dhcp_snooping.delete_snoop(site_id="your-site-id", snoop_id="<snoopId>")
+entry = client.dhcp_snooping.find_snoop_by_mac(site_id="your-site-id", mac="AA:BB:CC:DD:EE:FF")
+```
+
+`create_snoops` wraps the entries in the mandatory top-level `devices` array —
+without it the controller returns `errorCode 0` but persists nothing.
+`update_snoop` takes a flat `{mac, name, ports}` body (passed through unchanged).
+`find_snoop_by_mac` compares MACs format-insensitively (colon vs hyphen) and
+returns `None` when there is no match. Note the per-port
+`OswPortSettingVO.dhcpSnoopEnable` field is *not* the trust mechanism on tested
+hardware; trust is realised through these snoop entries.
+
+### RADIUS Profiles
+
+`client.radius_profiles` manages site RADIUS profiles referenced by 802.1X and
+PPSK/DPSK workflows.
+
+```python
+auth_servers = [{"ip": "10.0.0.10", "authPort": 1812, "authKey": "shared-secret"}]
+
+# List, or resolve one by id or name (exactly one selector)
+profiles = client.radius_profiles.all(site_id="your-site-id")
+profile = client.radius_profiles.get(site_id="your-site-id", name="My RADIUS Profile")
+
+# Create
+created = client.radius_profiles.create(
+    site_id="your-site-id",
+    name="My RADIUS Profile",
+    auth_servers=auth_servers,
+    accounting_enabled=False,
+    wireless_vlan_assignment=False,
+)
+
+# Update an existing profile by id (same body shape as create)
+client.radius_profiles.update(
+    site_id="your-site-id",
+    profile_id="<radiusProfileId>",
+    name="My RADIUS Profile",
+    auth_servers=auth_servers,
+)
+
+# Create-if-absent by name -> (profile_dict, created: bool)
+profile, was_created = client.radius_profiles.upsert(
+    site_id="your-site-id",
+    name="My RADIUS Profile",
+    auth_servers=auth_servers,
+)
+```
+
+`get` requires exactly one of `id` or `name`, raising `RadiusProfileNotFoundError`
+for a miss and `ValueError` for an ambiguous name. `create`/`update`/`upsert`
+require a non-empty `name` and a non-empty `auth_servers` list; extra Omada fields
+can be passed via `**kwargs`. Omada rejects modifying a profile that is in use by
+PPSK/DPSK with error `-34015`, so `upsert` is create-if-absent only (it never
+modifies an existing profile).
+
+### OLT / ONU optics (GPON)
+
+`client.olts` queries ONU optical telemetry from an upstream OLT. The Omada API
+requires an ONU **`key`** identifier for detail telemetry; this SDK provides a
+MAC-based convenience method that resolves the key via the ONU list endpoint.
+
+```python
+onu_detail = client.olts.get_onu_detail_by_mac(
+    site_id="your-site-id",
+    olt_mac="AA-BB-CC-DD-EE-FF",
+    pon_port="GPON 1/1/1",
+    onu_mac="11-22-33-44-55-66",
+)
+
+# Raw Omada payload, for example:
+# onu_detail["result"]["onuOpticalLinkInformation"]["receivedOpticalPower"]
+# onu_detail["result"]["onuOpticalLinkInformation"]["transmittedOpticalPower"]
+```
 
 ## OpenAPI Spec Issues and Mitigation
 
