@@ -700,3 +700,36 @@ This repository follows a deterministic patching approach inspired by [omada-go-
 - Normalize and patch into `spec/fixed/all-fixed.json`.
 - Apply issue-focused overlays in `spec/patches/`.
 - Validate fixed spec before model generation.
+
+### Spec source and version pinning
+
+The Omada Open API is effectively unversioned — `info.version` is `v0.1` on both
+the TP-Link cloud spec and a controller's own `/v3/api-docs`. The baseline is
+therefore anchored to the **controller** version (`controllerVer` + `apiVer` from
+`/api/info`) rather than the spec version. `make spec-fetch` writes both the raw
+spec (`spec/raw/all.json`) and a version manifest (`spec/raw/manifest.json`)
+recording `source`, `controllerVer`, `apiVer`, `spec_info_version`, `spec_sha256`,
+and `fetched_at`. `make spec-fix` / `make spec-validate` read `all.json` and are
+unaffected by the manifest.
+
+Choose the source:
+
+```bash
+# Public TP-Link cloud spec (default; the manifest records null controller versions)
+make spec-fetch
+
+# A local controller — set the address in the environment, not in the repo.
+# The manifest records only source="controller", never the host/IP.
+OMADA_BASE_URL=https://<controller> make spec-fetch-controller
+
+# Equivalent, via passthrough args
+make spec-fetch SPEC_FETCH_ARGS='--base-url https://<controller> --insecure'
+```
+
+Configuration:
+
+- `OMADA_BASE_URL` (or `--base-url`): controller base URL; the spec is read from
+  `{base}/v3/api-docs/00%20All` and the version manifest from `{base}/api/info`.
+- `OMADA_OPENAPI_URL` (or `--url`): explicit spec URL override.
+- `OMADA_VERIFY=false` (or `--insecure`): disable TLS verification for controllers
+  with self-signed certificates.

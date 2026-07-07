@@ -969,3 +969,49 @@ enable" therefore has no target in the Omada API.
   dedicated GET-loopback endpoint.
 - Timer knobs and `mstp` are available but not required for a basic STP/priority set.
 
+---
+
+## Decision 34 (2026-07): Controller-anchored spec fetch + version manifest
+
+### Context
+
+The Omada Open API is effectively **unversioned**: `info.version` is `"v0.1"` on
+both the TP-Link cloud spec and a controller's own `/v3/api-docs` (verified live
+2026-07-07). To detect spec-vs-controller drift over time we need to know *which
+controller* a fetched baseline came from, anchored to `controllerVer` + `apiVer`
+from the controller `/api/info` endpoint rather than the meaningless spec version.
+`tools/fetch_spec.py` previously fetched an unauthenticated spec into
+`spec/raw/all.json` with no version capture and only honoured `OMADA_OPENAPI_URL`.
+
+### Decision
+
+- `tools/fetch_spec.py` fetches from a selectable source and writes a version
+  manifest `spec/raw/manifest.json` alongside the canonical `spec/raw/all.json`:
+  - `--base-url` / `OMADA_BASE_URL`: controller source — spec from
+    `{base}/v3/api-docs/00%20All`, versions from `{base}/api/info`.
+  - `--url` / `OMADA_OPENAPI_URL`: explicit spec URL override.
+  - neither: the public cloud spec (unchanged default; no `/api/info`).
+  - `--insecure` / `OMADA_VERIFY=false`: disable TLS verification (self-signed
+    staging controllers).
+- Manifest fields: `source` (`controller`/`cloud`), `controllerVer`, `apiVer`,
+  `spec_info_version`, `spec_sha256`, `fetched_at`. `controllerVer`/`apiVer` are
+  `null` for the cloud source.
+- **The manifest records only the `source` *kind*, never the controller host/IP**,
+  so a private controller address is not committed. Switch/AP firmware capture is
+  **out of scope** for this tool — it belongs to the live conformance run.
+- `spec/raw/all.json` stays canonical and byte-identical in formatting
+  (`indent=2, sort_keys=True`), so `make spec-fix` / `make spec-validate` are
+  unchanged. `Makefile` adds `spec-fetch-controller` and passthrough
+  `SPEC_FETCH_ARGS`.
+- The tool remains **stdlib-only** (no `omada_client` import); `/api/info` and
+  `/v3/api-docs` are unauthenticated, so no SDK auth/runtime coupling is needed.
+
+### Consequences
+
+- `make spec-fetch` produces a version-stamped baseline that records which
+  controller it came from, seeding the broader Omada API drift program.
+- The private conformance suite consumes the same manifest anchor
+  (`controllerVer`/`apiVer`) when self-reporting compatibility rows.
+- Cloud fetches still work with zero configuration and carry null controller
+  versions, making the source explicit in the manifest.
+
