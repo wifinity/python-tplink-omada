@@ -29,6 +29,6 @@ Full behaviour details: [docs/controller-behaviour-notes.md](docs/controller-beh
 
 ## Maintenance
 
-Rows are added as a release-checklist step: before tagging an SDK release consumed
-downstream, verify it against the target controller and append a row here and to
+Rows are added as a release-checklist step: before tagging an SDK release, verify it
+against the target controller version(s) on real hardware and add a row here and to
 `compatibility.json`. Re-verify after any controller or switch/AP firmware upgrade.
