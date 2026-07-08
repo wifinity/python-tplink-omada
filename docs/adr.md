@@ -1015,3 +1015,55 @@ from the controller `/api/info` endpoint rather than the meaningless spec versio
 - Cloud fetches still work with zero configuration and carry null controller
   versions, making the source explicit in the manifest.
 
+---
+
+## Decision 35 (2026-07): Patch provenance convention + public compatibility/behaviour publication
+
+### Context
+
+Local spec patches in `spec/patches` mix two origins: overlays that mirror the
+upstream `omada-go-sdk` patch set (`authentication.json`, `createNewSite.json`,
+`DstTimeDTO.json`, per Decision 2) and our own live-controller discoveries
+(`lanProfilePoeEnum.json`). Only the poe patch carried any provenance, as free text
+in a `description`, so origin was not machine-readable or consistent. Separately, the
+Omada API drift program needs a **public** face: a sanitized SDK↔controller
+compatibility matrix and a neutral behaviour-notes doc, while the coverage inventory,
+watch-tests, and full ledger stay in the private conformance repo (see the drift
+program: public SDK carries the sanitized subset; private repo carries the rest).
+
+### Decision
+
+- **Provenance convention.** Every local patch carries an `x-provenance` OpenAPI
+  extension object (valid `x-` extension, survives `spec-validate`, scoped to a
+  schema/`info` object rather than the patch root to avoid deep-merge collisions):
+  - `origin`: `upstream` | `local`
+  - `source`: upstream project (upstream patches only, e.g. `omada-go-sdk`)
+  - `adr`: relevant ADR reference
+  - `verified-against`: controller/device the discovery was confirmed on (local only)
+  - `note`: short rationale
+  The upstream trio is marked `origin: upstream, source: omada-go-sdk, adr: Decision 2`;
+  `lanProfilePoeEnum.json` is `origin: local` (its inline `NOTE:` was migrated into
+  `x-provenance.note`).
+- **Public publication.** Publish `COMPATIBILITY.md` + `compatibility.json` (sanitized
+  SDK↔controller matrix) and `docs/controller-behaviour-notes.md` (live-controller
+  behaviour diverging from the published spec), linked from `docs/INDEX.md`. These
+  contain neutral capability/behaviour facts only — no coverage inventory, test names,
+  site/switch IDs, credentials, or roadmap. The full matrix and ledger remain private.
+- **dot1x spec patch NOT added.** The proposed `dot1xSwitchSetting.json` (adding
+  `type`/`selected`/`singleMabAuthPorts` to `Dot1xSwitchSettingOpenApiVO` and `resource`
+  to `Dot1xSwitchOpenApiVO`) is **not** created. Those fields were previously required
+  but are **optional** as of controller 6.2.0.17 / firmware 1.0.26 (verified live
+  2026-07-08), and they are absent from the controller's own fetched spec. Adding them
+  would diverge from controller reality; the behaviour is documented in
+  `controller-behaviour-notes.md` instead. Recorded here per Decision 2.
+
+### Consequences
+
+- Patch origin is machine-readable and consistent across all local patches.
+- The SDK has a public, sanitized compatibility/behaviour surface without exposing
+  internal usage, coverage, or roadmap.
+- `x-provenance` keys are merged into `spec/fixed/all-fixed.json`; they are valid
+  OpenAPI extensions and do not affect `spec-validate` or model generation.
+- Future divergences from the upstream patch set (added or deliberately withheld)
+  continue to be recorded in this file per Decision 2.
+

@@ -124,7 +124,13 @@
   "info": {
     "description": "Authentication endpoints for the TP-Link Omada Open API. These endpoints are not included in the main OpenAPI spec.\n",
     "title": "Omada Open API - Authorization",
-    "version": "v0.1"
+    "version": "v0.1",
+    "x-provenance": {
+      "origin": "upstream",
+      "source": "omada-go-sdk",
+      "adr": "Decision 2",
+      "note": "Upstream patch overlay for the authorize endpoints/schemas, which are absent from the published spec."
+    }
   },
   "openapi": "3.0.1",
   "paths": {

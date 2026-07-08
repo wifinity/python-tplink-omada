@@ -4,6 +4,12 @@
     "schemas": {
       "DstTimeDTO": {
         "description": "DST end time config",
+        "x-provenance": {
+          "origin": "upstream",
+          "source": "omada-go-sdk",
+          "adr": "Decision 2",
+          "note": "Upstream patch overlay; missing from the published spec."
+        },
         "properties": {
           "day": {
             "description": "Day of the DST config should be a value as follows: 1: Monday; 2: Tuesday; 3: Wednesday; 4: Thursday; 5: Friday; 6: Saturday; 7: Sunday.",

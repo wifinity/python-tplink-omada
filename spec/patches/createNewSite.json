@@ -20,6 +20,12 @@
   "components": {
     "schemas": {
       "CreateNewSiteResponse": {
+        "x-provenance": {
+          "origin": "upstream",
+          "source": "omada-go-sdk",
+          "adr": "Decision 2",
+          "note": "Upstream patch overlay; response schema missing from the published spec."
+        },
         "allOf": [
           {
             "$ref": "#/components/schemas/OperationResponse"

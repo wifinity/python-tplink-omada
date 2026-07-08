@@ -15458,7 +15458,13 @@
             },
             "type": "object"
           }
-        ]
+        ],
+        "x-provenance": {
+          "adr": "Decision 2",
+          "note": "Upstream patch overlay; response schema missing from the published spec.",
+          "origin": "upstream",
+          "source": "omada-go-sdk"
+        }
       },
       "CreatePortTagOpenApiVO": {
         "properties": {
@@ -21929,7 +21935,13 @@
           "month",
           "serial"
         ],
-        "type": "object"
+        "type": "object",
+        "x-provenance": {
+          "adr": "Decision 2",
+          "note": "Upstream patch overlay; missing from the published spec.",
+          "origin": "upstream",
+          "source": "omada-go-sdk"
+        }
       },
       "DstTimeOpenApiDTO": {
         "description": "DST end time config",
@@ -37666,9 +37678,15 @@
             "type": "string"
           },
           "poe": {
-            "description": "PoE should be a value as follows: 0: off (Disable), 1: on (Enable), 2: \"do not modify\". NOTE: corrected against a live controller (SG2210XMP-M2) \u2014 the vendor's original description had 0 and 1 inverted (it stated \"0: on, 1: off\").",
+            "description": "PoE should be a value as follows: 0: off (Disable), 1: on (Enable), 2: \"do not modify\".",
             "format": "int32",
-            "type": "integer"
+            "type": "integer",
+            "x-provenance": {
+              "adr": "Decision 35",
+              "note": "Live-controller discovery: the vendor's published poe enum had 0 and 1 inverted (it stated \"0: on, 1: off\"); corrected here.",
+              "origin": "local",
+              "verified-against": "SG2210XMP-M2, controllerVer 6.2.0.17, apiVer 3"
+            }
           },
           "portIsolationEnable": {
             "description": "Port-isolation enable status",
@@ -104506,7 +104524,13 @@
   "info": {
     "description": "Authentication endpoints for the TP-Link Omada Open API. These endpoints are not included in the main OpenAPI spec.\n",
     "title": "Omada Open API - Authorization",
-    "version": "v0.1"
+    "version": "v0.1",
+    "x-provenance": {
+      "adr": "Decision 2",
+      "note": "Upstream patch overlay for the authorize endpoints/schemas, which are absent from the published spec.",
+      "origin": "upstream",
+      "source": "omada-go-sdk"
+    }
   },
   "openapi": "3.0.1",
   "paths": {

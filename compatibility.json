@@ -1,0 +1,14 @@
+{
+  "description": "Published SDK-to-controller compatibility matrix. Each row records a verified combination of this SDK version against a live Omada controller. Sanitized public subset; the full internal matrix is maintained separately.",
+  "matrix": [
+    {
+      "sdk_version": "1.3.0",
+      "controllerVer": "6.2.0.17",
+      "apiVer": "3",
+      "device_model": "SG2210XMP-M2",
+      "firmware": "1.0.26",
+      "result": "pass",
+      "date": "2026-07-08"
+    }
+  ]
+}

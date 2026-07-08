@@ -5,7 +5,13 @@
       "LanProfileSettingOpenApiVO": {
         "properties": {
           "poe": {
-            "description": "PoE should be a value as follows: 0: off (Disable), 1: on (Enable), 2: \"do not modify\". NOTE: corrected against a live controller (SG2210XMP-M2) — the vendor's original description had 0 and 1 inverted (it stated \"0: on, 1: off\")."
+            "description": "PoE should be a value as follows: 0: off (Disable), 1: on (Enable), 2: \"do not modify\".",
+            "x-provenance": {
+              "origin": "local",
+              "verified-against": "SG2210XMP-M2, controllerVer 6.2.0.17, apiVer 3",
+              "adr": "Decision 35",
+              "note": "Live-controller discovery: the vendor's published poe enum had 0 and 1 inverted (it stated \"0: on, 1: off\"); corrected here."
+            }
           }
         }
       }
