@@ -9,7 +9,39 @@ from omada_client.wifi_payload_utils import (
     _build_ppsk_local_setting,
     _build_rate_limit_profile_body,
     _build_vlan_pool_setting,
+    ssid_detail_to_basic_config_patch,
 )
+
+
+def _detail_without_pmf(*, security: int) -> dict:
+    """SSID detail as some controllers return it: no enable11r / pmfMode keys."""
+    return {
+        "name": "N",
+        "band": 3,
+        "broadcast": True,
+        "security": security,
+        "guestNetEnable": False,
+        "mloEnable": False,
+        "vlanEnable": False,
+    }
+
+
+def test_basic_config_patch_defaults_omitted_required_fields() -> None:
+    out = ssid_detail_to_basic_config_patch(_detail_without_pmf(security=3))
+    assert out["enable11r"] is False
+    assert out["pmfMode"] == 3  # security 3 (psk) -> required
+
+
+def test_basic_config_patch_pmf_default_follows_security() -> None:
+    assert ssid_detail_to_basic_config_patch(_detail_without_pmf(security=0))["pmfMode"] == 2  # open -> capable
+    assert ssid_detail_to_basic_config_patch(_detail_without_pmf(security=5))["pmfMode"] == 3  # dpsk -> required
+
+
+def test_basic_config_patch_still_raises_on_missing_structural_field() -> None:
+    detail = _detail_without_pmf(security=0)
+    del detail["band"]
+    with pytest.raises(ValueError, match="Missing required fields"):
+        ssid_detail_to_basic_config_patch(detail)
 
 
 def test_build_vlan_pool_setting() -> None:

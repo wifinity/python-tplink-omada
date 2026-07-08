@@ -143,6 +143,12 @@ _UPDATE_BASIC_CONFIG_REQUIRED_KEYS: frozenset[str] = frozenset(
     }
 )
 
+# Some controllers (verified 6.2.0.17) require enable11r/pmfMode on the update PATCH but do
+# NOT return them on the SSID GET, so read-modify-write can't preserve them — we fill safe
+# defaults instead of failing. pmfMode follows the SSID security type (0/2 open/aaa → capable;
+# 3/4/5 psk/ppsk/dpsk → required), matching the create-time defaults.
+_DEFAULT_PMF_MODE_BY_SECURITY: dict[Any, int] = {0: 2, 2: 2, 3: 3, 4: 3, 5: 3}
+
 
 def _normalize_ssid_override_name(overrides: dict[str, Any]) -> None:
     if "ssid" not in overrides:
@@ -179,6 +185,11 @@ def ssid_detail_to_basic_config_patch(
     and ensures the OpenAPI **required** basic-config fields are present. ``ssid`` in *overrides* is treated
     as an alias for JSON ``name`` (Omada broadcast SSID field).
 
+    ``enable11r`` and ``pmfMode`` are required on the PATCH but omitted by some controllers on the SSID
+    GET, so when neither *detail* nor *overrides* supplies them they are defaulted (``enable11r=False``;
+    ``pmfMode`` per the SSID security type). Consequently an update that does not set them explicitly
+    **resets** them to those defaults — the controller does not disclose their current values.
+
     Raises:
         ValueError: If required fields are missing after merge, or if *overrides* contains unknown keys.
     """
@@ -190,6 +201,11 @@ def ssid_detail_to_basic_config_patch(
             if key not in _UPDATE_BASIC_CONFIG_ALLOWED_KEYS:
                 raise ValueError(f"Unknown override key for basic config: {key}")
             out[key] = value
+    # Fill the controller-omitted-but-required fields so read-modify-write can round-trip.
+    if "enable11r" not in out:
+        out["enable11r"] = False
+    if "pmfMode" not in out:
+        out["pmfMode"] = _DEFAULT_PMF_MODE_BY_SECURITY.get(out.get("security"), 2)
     missing = sorted(k for k in _UPDATE_BASIC_CONFIG_REQUIRED_KEYS if k not in out)
     if missing:
         raise ValueError(

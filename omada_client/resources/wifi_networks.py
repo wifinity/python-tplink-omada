@@ -735,8 +735,17 @@ class WiFiNetworksResource:
         id: str | None = None,
         name: str | None = None,
         network_data: dict[str, Any] | None = None,
+        vlan: int | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
+        """Update an SSID's basic config (read-modify-write over the SSID detail).
+
+        ``vlan`` is a shortcut mirroring :meth:`create`: it sets the SSID's VLAN via the
+        ``vlanSetting`` pool object (the controller stores/returns the VLAN there, not in the
+        inert flat ``vlanId``). Pass either ``vlan`` or an explicit ``vlanSetting`` override,
+        not both. Note: because some controllers omit ``pmfMode``/``enable11r`` on the SSID
+        GET, an update that does not set them explicitly resets them to defaults.
+        """
         if (id is None) == (name is None):
             raise ValueError("Provide exactly one of 'id' or 'name'")
 
@@ -747,6 +756,10 @@ class WiFiNetworksResource:
                 raise ValueError("network_data must be a dict when provided")
             overrides.update(network_data)
         overrides.update(kwargs)
+        if vlan is not None:
+            if "vlanSetting" in overrides:
+                raise ValueError("Provide either 'vlan' or a 'vlanSetting' override, not both")
+            overrides["vlanSetting"] = _build_vlan_pool_setting(vlan)
         payload = ssid_detail_to_basic_config_patch(detail, overrides if overrides else None)
 
         ssid_id = self._extract_ssid_id(detail)

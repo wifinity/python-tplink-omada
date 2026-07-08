@@ -1338,6 +1338,31 @@ def test_ssid_detail_to_basic_config_patch_unknown_override_raises() -> None:
         ssid_detail_to_basic_config_patch(detail, {"notAField": 1})
 
 
+def test_wifi_update_basic_config_vlan_shortcut() -> None:
+    client = DummyClient()
+    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    client.get_response = {"result": _ssid_detail_minimal(name="N", security=0)}
+    resource = WiFiNetworksResource(client)
+
+    resource.update_basic_config(site_id="s1", wlan_group="w1", id="s1", vlan=100)
+
+    sent = cast(dict[str, object], client.patch_calls[0][1])
+    assert sent["vlanSetting"] == {"mode": 1, "customConfig": {"customMode": 1, "vlanPoolIds": "100"}}
+    assert "vlan" not in sent  # the shortcut must not leak a raw 'vlan' key
+
+
+def test_wifi_update_basic_config_rejects_vlan_and_vlan_setting() -> None:
+    client = DummyClient()
+    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    client.get_response = {"result": _ssid_detail_minimal()}
+    resource = WiFiNetworksResource(client)
+
+    with pytest.raises(ValueError, match="either 'vlan' or a 'vlanSetting'"):
+        resource.update_basic_config(
+            site_id="s1", wlan_group="w1", id="s1", vlan=100, network_data={"vlanSetting": {"mode": 1}}
+        )
+
+
 def test_ssid_detail_to_basic_config_patch_missing_required_raises() -> None:
     with pytest.raises(ValueError, match="Missing required fields"):
         ssid_detail_to_basic_config_patch({"name": "only"})
