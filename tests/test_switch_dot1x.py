@@ -52,6 +52,48 @@ def test_get_defaults_empty_when_no_result() -> None:
     assert resource.get(site_id="site-1") == {}
 
 
+def test_candidates_returns_unwrapped_list() -> None:
+    http = DummyHttpClient()
+    http._get_response = {
+        "errorCode": 0,
+        "result": [
+            {
+                "mac": "AA-BB-CC-DD-EE-FF",
+                "ports": [
+                    {"port": 5, "dot1xEnable": False, "mabEnable": True, "authType": 2},
+                    {"port": 6, "dot1xEnable": False, "mabEnable": False, "authType": 0},
+                ],
+            }
+        ],
+    }
+    resource = SwitchDot1xResource(http)
+
+    candidates = resource.candidates(site_id="site-1")
+
+    assert candidates[0]["mac"] == "AA-BB-CC-DD-EE-FF"
+    assert candidates[0]["ports"][0] == {"port": 5, "dot1xEnable": False, "mabEnable": True, "authType": 2}
+    method, url, _ = http.requests[0]
+    assert method == "GET"
+    assert "/openapi/v1/OMADACID/" in url
+    assert url.endswith("/sites/site-1/dot1x/candidates")
+
+
+def test_candidates_unwraps_paginated_data() -> None:
+    http = DummyHttpClient()
+    http._get_response = {"errorCode": 0, "result": {"data": [{"mac": "AA-BB-CC-DD-EE-FF", "ports": []}]}}
+    resource = SwitchDot1xResource(http)
+
+    assert resource.candidates(site_id="site-1") == [{"mac": "AA-BB-CC-DD-EE-FF", "ports": []}]
+
+
+def test_candidates_defaults_empty_when_no_result() -> None:
+    http = DummyHttpClient()
+    http._get_response = {"errorCode": 0}
+    resource = SwitchDot1xResource(http)
+
+    assert resource.candidates(site_id="site-1") == []
+
+
 def test_update_patches_body_at_site_dot1x() -> None:
     http = DummyHttpClient()
     resource = SwitchDot1xResource(http)

@@ -336,6 +336,20 @@ per-port `switches` array. `update` requires `authMode`, `authType`, `enable`,
 keyed by switch `mac`). Read-modify-write so unmanaged required fields and the
 per-port array are preserved.
 
+Because `get` omits the per-port state, use `candidates` to read current per-port
+802.1X/MAB before reconciling:
+
+```python
+# Per-switch, per-port 802.1X/MAB state (the read side of the `switches` array)
+for sw in client.switch_dot1x.candidates(site_id="your-site-id"):
+    for p in sw["ports"]:
+        # p: {"port", "dot1xEnable", "mabEnable", "authType"}  authType 2 == MAB only
+        ...
+```
+
+A port must appear in **only one** of `dot1xPorts`/`mabPorts` — the "Both" mode
+(`authType 3`) is rejected by the Open API.
+
 ### Wireless Network Groups
 
 `client.wlan_groups` manages WLAN groups within a site.

@@ -1067,3 +1067,30 @@ program: public SDK carries the sanitized subset; private repo carries the rest)
 - Future divergences from the upstream patch set (added or deliberately withheld)
   continue to be recorded in this file per Decision 2.
 
+## Decision 36 (2026-07): `SwitchDot1xResource.candidates` for per-port read-before-write
+
+### Context
+
+`switch_dot1x.get` returns `Dot1xSwitchResOpenApiVO`, which the controller does
+**not** populate with the per-port `switches` array. A caller reconciling per-port
+802.1X/MAB (e.g. enabling MAB on home-networking ports) therefore has no way to
+read current per-port state from `get`, and cannot make the `update` idempotent.
+The controller exposes the state at `GET .../dot1x/candidates`
+(`getSwitchDot1xCandidates` → `Dot1xSwitchInfoOpenApiVO[]`), which was unwrapped.
+
+### Decision
+
+Add `SwitchDot1xResource.candidates(*, site_id) -> list[dict]`, mirroring `get`'s
+`result` unwrapping (tolerating both a bare list and a paginated `{data: [...]}`
+result, returning `[]` when absent). It stays dict-first: each element carries
+`mac` and a `ports` array of `{port, dot1xEnable, mabEnable, authType}`. `update`
+is unchanged — the per-port `switches` array is still built and reconciled by the
+caller (read scalars from `get`, read per-port state from `candidates`, PATCH the
+merged body). A port must be in only one of `dot1xPorts`/`mabPorts` (`authType 3`
+"Both" is rejected by the Open API — see `controller-behaviour-notes.md`).
+
+### Consequences
+
+- Per-port 802.1X/MAB reconciliation can be made idempotent without guessing.
+- No new write path; `candidates` is read-only and additive (minor version bump).
+
