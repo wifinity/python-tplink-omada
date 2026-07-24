@@ -300,6 +300,26 @@ client.switches.update_switch_port(
 )
 ```
 
+**LLDP neighbors** are read via `get_lldp_neighbors`, returning each neighbor
+as an `OswLldpNeighborVO` dict. `portId` matches the switch's own `port`
+number from `get_ports`. Returns `[]` when the switch has no neighbors, is
+not yet adopted, or the MAC is unrecognized — this endpoint gives no
+distinguishable "not found" signal. Note that `systemName`/`neighborPortId`
+reflect whatever the *neighboring device's own firmware* broadcasts, not
+necessarily its configured hostname or a real port name/index — single-port
+devices like APs commonly report their own MAC as `neighborPortId`. Prefer
+`deviceId` (when present) over `systemName` for a reliable MAC/chassis-id
+match:
+
+```python
+neighbors = client.switches.get_lldp_neighbors(
+    site_id="your-site-id",
+    switch_mac="AA-BB-CC-DD-EE-FF",
+)
+# neighbors: [{"portId": 7, "deviceId": "11-22-33-44-55-66", "systemName": "EAP725-Wall",
+#              "neighborPortId": "11-22-33-44-55-66", "ttl": 120, "capabilities": "Router,Bridge"}, ...]
+```
+
 ### Switch 802.1X
 
 `client.switch_dot1x` manages switch global (system) 802.1X settings, which Omada

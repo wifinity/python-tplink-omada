@@ -266,6 +266,68 @@ def test_set_ports_name_sends_correct_body() -> None:
     assert kwargs["json"] == {"portNameList": [{"port": 1, "name": "uplink"}, {"port": 2, "name": "AP"}]}
 
 
+def test_get_lldp_neighbors_uses_v1_url() -> None:
+    http = DummyHttpClient()
+    http._get_response = {
+        "result": {
+            "data": [
+                {
+                    "portId": 7,
+                    "deviceId": "11-22-33-44-55-66",
+                    "systemName": "EAP725-Wall",
+                    "neighborPortId": "11-22-33-44-55-66",
+                    "ttl": 120,
+                    "capabilities": "Router,WLAN access point,Bridge",
+                },
+                {
+                    "portId": 8,
+                    "deviceId": "AA-BB-CC-DD-EE-22",
+                    "systemName": "HP-2530-24G-PoEP",
+                    "neighborPortId": "2",
+                    "ttl": 120,
+                    "capabilities": "Bridge",
+                },
+            ]
+        }
+    }
+    resource = SwitchesResource(http)
+
+    neighbors = resource.get_lldp_neighbors(site_id="site-1", switch_mac="aa:bb:cc:dd:ee:11")
+
+    method, url, kwargs = http.requests[0]
+    assert method == "GET"
+    assert "switches/AA-BB-CC-DD-EE-11/lldp-neighbors" in url
+    assert kwargs["params"] == {"page": 1, "pageSize": 1000}
+    assert neighbors == [
+        {
+            "portId": 7,
+            "deviceId": "11-22-33-44-55-66",
+            "systemName": "EAP725-Wall",
+            "neighborPortId": "11-22-33-44-55-66",
+            "ttl": 120,
+            "capabilities": "Router,WLAN access point,Bridge",
+        },
+        {
+            "portId": 8,
+            "deviceId": "AA-BB-CC-DD-EE-22",
+            "systemName": "HP-2530-24G-PoEP",
+            "neighborPortId": "2",
+            "ttl": 120,
+            "capabilities": "Bridge",
+        },
+    ]
+
+
+def test_get_lldp_neighbors_returns_empty_when_no_neighbors() -> None:
+    http = DummyHttpClient()
+    http._get_response = {"result": {"data": []}}
+    resource = SwitchesResource(http)
+
+    neighbors = resource.get_lldp_neighbors(site_id="site-1", switch_mac="aa:bb:cc:dd:ee:11")
+
+    assert neighbors == []
+
+
 def test_get_port_profiles_uses_v2_url() -> None:
     http = DummyHttpClient()
     http._get_response = {

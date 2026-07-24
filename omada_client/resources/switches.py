@@ -150,6 +150,26 @@ class SwitchesResource:
             ),
         )
 
+    def get_lldp_neighbors(self, *, site_id: str, switch_mac: str) -> list[dict[str, Any]]:
+        """Return LLDP neighbor entries for one switch.
+
+        Uses GET /openapi/v1/sites/{siteId}/switches/{switchMac}/lldp-neighbors.
+        Each item in the returned list is an OswLldpNeighborVO with fields
+        including 'portId' (int), 'deviceId' (str, MAC-like chassis id when
+        present), 'systemName', 'neighborPortId', 'ttl', and 'capabilities'.
+        Returns [] when the switch has no neighbors, is not yet adopted, or the
+        MAC is unrecognized — the controller does not distinguish these cases.
+        """
+        normalized = normalize_mac(switch_mac)
+        response = cast(
+            dict[str, Any],
+            self.client.get(
+                self.client.api_path(f"/openapi/v1/sites/{site_id}/switches/{normalized}/lldp-neighbors"),
+                params={"page": 1, "pageSize": 1000},
+            ),
+        )
+        return cast(list[dict[str, Any]], self._extract_items(response))
+
     def get_port_profiles(self, *, site_id: str) -> list[dict[str, Any]]:
         """Return all LAN port profiles for the site.
 
