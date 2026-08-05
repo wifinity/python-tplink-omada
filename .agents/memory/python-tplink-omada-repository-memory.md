@@ -31,6 +31,8 @@
   - `APsResource.get_by_name` returns a DeviceInfo-style AP item resolved by AP name.
   - `APsResource.get_overview_by_mac` returns AP overview endpoint payload (`/aps/{apMac}`), which can differ in shape from DeviceInfo; adds `result.wlanGroupName` when `wlanId` is present and resolvable via `wlan_groups.get`.
   - `APsResource.get_wired_uplink_by_mac` returns AP wired uplink endpoint payload (`/aps/{apMac}/wired-uplink`) and augments `result.wiredUplink` with decoded meaning fields (`portTypeMeaning`, `linkStatusMeaning`, `linkSpeedMeaning`, `duplexMeaning`) while preserving numeric codes.
+  - `APsResource.get_by_serial` returns a DeviceInfo-style AP item resolved by serial number (`sn`); filtered client-side (no `searchKey` support for `sn`), raises `DeviceNotFoundError` if not found.
+- `SwitchesResource` has the same lookup contract as `APsResource` (mac/name/serial), including `SwitchesResource.get_by_serial` (Decision 38) — DeviceInfo-style, client-side `sn` filter, `DeviceNotFoundError` if not found.
 - WLAN group contract is site-scoped and selector-based:
   - `WLANGroupsResource.all(*, site_id, params=None)` lists groups from `/wireless-network/wlans`.
   - `WLANGroupsResource.create(*, site_id, name=None, group_data=None)` creates groups at `/wireless-network/wlans`, accepts direct `name`, and defaults payload `clone=False` unless explicitly set.

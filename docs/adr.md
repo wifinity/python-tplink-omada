@@ -1094,3 +1094,62 @@ merged body). A port must be in only one of `dot1xPorts`/`mabPorts` (`authType 3
 - Per-port 802.1X/MAB reconciliation can be made idempotent without guessing.
 - No new write path; `candidates` is read-only and additive (minor version bump).
 
+## Decision 37 (2026-08): `APsResource.get_by_serial` for lookup by serial number
+
+### Context
+
+`DeviceInfo` records (returned by the device list endpoint, `client.aps.all`)
+carry a serial number (`sn`) distinct from `mac`, but `APsResource` only
+exposed lookups by `mac` (`get_by_mac`) and `name` (`get_by_name`). The device
+list endpoint's `searchKey` parameter only supports `name`/`mac`/`ip` — `sn` is
+not a supported search field — so no server-side filter by serial is possible.
+
+### Decision
+
+Add `APsResource.get_by_serial(*, site_id, serial) -> dict[str, Any]`, mirroring
+`get_by_mac`'s contract: it calls `client.devices.all(site_id=site_id,
+deviceType="ap")` (no `searchKey`, since `sn` isn't supported there), filters
+the returned items client-side on `item.get("sn") == serial`, augments with
+`augment_device_status_meanings`, and raises `DeviceNotFoundError` if no match
+is found — same exception type as `get_by_mac`, since a serial uniquely
+identifies one device.
+
+### Alternatives considered
+
+1. Filter via `searchKey=<serial>` — rejected, the API does not support `sn` as
+   a search field, so this would silently return the full unfiltered list.
+
+### Consequences
+
+- Adds a third supported identifier axis (mac/name/serial) to the AP lookup
+  contract with a consistent DeviceInfo-style return shape.
+- Same pagination limitation as `get_by_mac`/`get_by_name`: only the first
+  `page_size` (default 1000) devices are searched.
+
+## Decision 38 (2026-08): `SwitchesResource.get_by_serial` for lookup by serial number
+
+### Context
+
+Mirrors Decision 37: `SwitchesResource` had `get_by_mac`/`get_by_name` but
+no lookup by the `sn` field present on every switch `DeviceInfo` record, and
+`searchKey` does not support filtering by serial.
+
+### Decision
+
+Add `SwitchesResource.get_by_serial(*, site_id, serial) -> dict[str, Any]`,
+identical in structure to `APsResource.get_by_serial`: calls
+`client.devices.all(site_id=site_id, deviceType="switch")` (no `searchKey`),
+filters client-side on `item.get("sn") == serial`, augments with
+`augment_device_status_meanings`, and raises `DeviceNotFoundError` if unmatched.
+
+### Alternatives considered
+
+1. Filter via `searchKey=<serial>` — rejected, same reason as Decision 37: not
+   a supported search field.
+
+### Consequences
+
+- Switch lookup now supports mac/name/serial, consistent with the AP contract.
+- Same pagination limitation as the other `SwitchesResource` lookups (first
+  `page_size`, default 1000, devices searched).
+

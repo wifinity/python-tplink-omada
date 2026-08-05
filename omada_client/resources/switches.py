@@ -68,6 +68,21 @@ class SwitchesResource:
             raise ValueError(f"Multiple switches named '{name}' found in site '{site_id}'")
         raise ValueError(f"Switch named '{name}' not found in site '{site_id}'")
 
+    def get_by_serial(self, *, site_id: str, serial: str) -> dict[str, Any]:
+        response = cast(
+            dict[str, Any],
+            self.client.devices.all(site_id=site_id, deviceType="switch"),
+        )
+        items = self._extract_items(response)
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if item.get("sn") == serial:
+                matched = cast(dict[str, Any], item)
+                augment_device_status_meanings(matched)
+                return matched
+        raise DeviceNotFoundError(f"Switch with serial '{serial}' not found in site '{site_id}'")
+
     def create(
         self,
         *,

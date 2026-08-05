@@ -11,6 +11,20 @@ class DummyDevicesResource:
     def all(self, *, site_id: str, page: int = 1, page_size: int = 1000, **params):
         self.calls.append(("list", site_id, page, page_size, params))
         search_key = params.get("searchKey")
+        if search_key is None and params.get("deviceType") == "switch":
+            return {
+                "result": {
+                    "data": [
+                        {
+                            "mac": "AA-BB-CC-DD-EE-FF",
+                            "name": "SW-1",
+                            "sn": "AABB12345678",
+                            "status": 1,
+                            "detailStatus": 14,
+                        }
+                    ]
+                }
+            }
         if search_key == "AA-BB-CC-DD-EE-FF":
             return {"result": {"data": [{"mac": search_key, "name": "SW-1", "status": 1, "detailStatus": 14}]}}
         if search_key == "SW-1":
@@ -199,6 +213,35 @@ def test_switches_resource_get_by_mac_not_found_raises_device_not_found() -> Non
     try:
         resource.get_by_mac(site_id="s1", mac="aa:bb:cc:dd:ee:00")
         assert False, "Expected DeviceNotFoundError for missing switch MAC"
+    except DeviceNotFoundError as exc:
+        assert "not found" in str(exc)
+
+
+def test_switches_resource_get_by_serial() -> None:
+    client = DummyClient()
+    resource = SwitchesResource(client)
+
+    by_serial = resource.get_by_serial(site_id="s1", serial="AABB12345678")
+
+    assert by_serial == {
+        "mac": "AA-BB-CC-DD-EE-FF",
+        "name": "SW-1",
+        "sn": "AABB12345678",
+        "status": 1,
+        "detailStatus": 14,
+        "statusMeaning": "Connected",
+        "detailStatusMeaning": "Connected",
+    }
+    assert client.devices.calls[-1] == ("list", "s1", 1, 1000, {"deviceType": "switch"})
+
+
+def test_switches_resource_get_by_serial_not_found_raises_device_not_found() -> None:
+    client = DummyClient()
+    resource = SwitchesResource(client)
+
+    try:
+        resource.get_by_serial(site_id="s1", serial="UNKNOWN-SERIAL")
+        assert False, "Expected DeviceNotFoundError for missing switch serial"
     except DeviceNotFoundError as exc:
         assert "not found" in str(exc)
 

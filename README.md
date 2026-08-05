@@ -179,9 +179,10 @@ unknown codes are preserved and get deterministic fallbacks like
 # List all APs in a site
 aps = client.aps.all(site_id="your-site-id")
 
-# Look up AP DeviceInfo by MAC or by name
+# Look up AP DeviceInfo by MAC, name, or serial number
 ap_device = client.aps.get_by_mac(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
 ap_device_by_name = client.aps.get_by_name(site_id="your-site-id", name="Lobby-AP-01")
+ap_device_by_serial = client.aps.get_by_serial(site_id="your-site-id", serial="AABB12345678")
 
 # AP overview payload by MAC (adds result.wlanGroupName when wlanId resolves)
 ap_overview = client.aps.get_overview_by_mac(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
@@ -204,8 +205,12 @@ client.aps.check_adopt(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
 client.aps.delete(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
 ```
 
-`get_by_mac`/`get_by_name` return DeviceInfo-style records resolved from the
-AP-filtered device list; `get_by_mac` raises `DeviceNotFoundError` on a miss.
+`get_by_mac`/`get_by_name`/`get_by_serial` return DeviceInfo-style records
+resolved from the AP-filtered device list; `get_by_mac`/`get_by_serial` raise
+`DeviceNotFoundError` on a miss (`get_by_name` raises `ValueError`, since name
+collisions are possible). `get_by_serial` matches on the `sn` field and always
+scans the full AP-filtered device list client-side, since `sn` is not a
+supported `searchKey` field on the Omada API.
 `get_overview_by_mac` uses the dedicated AP overview endpoint (a different result
 shape) and adds `result.wlanGroupName` when a `wlanId` (or legacy WLAN group id)
 is present and resolvable via `wlan_groups.get` — the id lookup scans the WLAN
@@ -235,10 +240,11 @@ delegating adopt operations to `client.devices.start_adopt(...)` /
 `client.devices.check_adopt(...)`).
 
 ```python
-# List all switches, or look up one by MAC or name
+# List all switches, or look up one by MAC, name, or serial number
 switches = client.switches.all(site_id="your-site-id")
 switch_device = client.switches.get_by_mac(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
 switch_device_by_name = client.switches.get_by_name(site_id="your-site-id", name="Core-SW-01")
+switch_device_by_serial = client.switches.get_by_serial(site_id="your-site-id", serial="AABB12345678")
 
 # Register, adopt, and delete
 created_switch = client.switches.create(site_id="your-site-id", device_key="ZTP-DEVICE-KEY")
@@ -246,6 +252,12 @@ client.switches.start_adopt(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
 client.switches.check_adopt(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
 client.switches.delete(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
 ```
+
+`get_by_mac`/`get_by_name`/`get_by_serial` share the same lookup contract as
+the AP resource above: DeviceInfo-style records, `get_by_mac`/`get_by_serial`
+raise `DeviceNotFoundError` on a miss, and `get_by_serial` matches on `sn` by
+scanning the full switch-filtered device list client-side (no `searchKey`
+support for serial numbers).
 
 **LAN port profiles** are managed dict-first (the caller builds the
 `LanProfileSettingOpenApiVO` body; the SDK passes it through unchanged):
