@@ -69,6 +69,45 @@ def test_all_returns_network_list() -> None:
     assert params == {"page": 1, "pageSize": 1000}
 
 
+def test_all_pages_through_multiple_pages() -> None:
+    """A site with more networks than one page holds must return every network.
+
+    Regression: fetching only page 1 (pageSize cap) silently dropped the highest
+    VLANs, so VLAN resolution failed for them with a misleading "no LAN network
+    on the site" error. Uses a small page_size to keep the fixture cheap.
+    """
+    client = DummyClient()
+    # Page 1 is full (2 items == page_size) so paging must continue; page 2 is
+    # short (1 item) so paging stops after it.
+    client.get_responses = [
+        _list_response(_net(98, "guest", "net-1"), _net(99, "onboarding", "net-2")),
+        _list_response(_net(2998, "home-2998", "net-3")),
+    ]
+    resource = LanNetworksResource(client)
+
+    result = resource.all(site_id="s1", page_size=2)
+
+    assert [n["vlan"] for n in result] == [98, 99, 2998]
+    assert len(client.get_calls) == 2
+    assert client.get_calls[0][1] == {"page": 1, "pageSize": 2}
+    assert client.get_calls[1][1] == {"page": 2, "pageSize": 2}
+
+
+def test_all_stops_when_final_page_is_exactly_full() -> None:
+    """When the last page is exactly full, the next (empty) page terminates paging."""
+    client = DummyClient()
+    client.get_responses = [
+        _list_response(_net(98, "guest", "net-1"), _net(99, "onboarding", "net-2")),
+        {"result": {"data": []}},
+    ]
+    resource = LanNetworksResource(client)
+
+    result = resource.all(site_id="s1", page_size=2)
+
+    assert [n["vlan"] for n in result] == [98, 99]
+    assert len(client.get_calls) == 2
+
+
 def test_all_returns_empty_list_when_no_data() -> None:
     client = DummyClient()
     client.get_response = {"result": {"data": []}}

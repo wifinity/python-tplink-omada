@@ -50,13 +50,36 @@ class LanNetworksResource:
                 return [item for item in value if isinstance(item, dict)]
         return []
 
-    def all(self, *, site_id: str) -> list[dict[str, Any]]:
-        """List all LAN networks for a site."""
-        response = self.client.get(
-            self._path(f"/openapi/v1/sites/{site_id}/lan-networks"),
-            params={"page": 1, "pageSize": 1000},
-        )
-        return self._coerce_list_response(cast(dict[str, Any], response))
+    def all(self, *, site_id: str, page_size: int = 1000) -> list[dict[str, Any]]:
+        """List every LAN network for a site, paging through all pages.
+
+        The Omada list endpoint is paginated and returns at most ``pageSize``
+        rows per request. A site can carry more LAN networks than one page holds
+        (large VLAN deployments), so this walks every page and concatenates the
+        results. Fetching only the first page would silently truncate the list —
+        e.g. ``vlan_id_to_network_id`` would omit any VLAN beyond the first page
+        and resolution of those VLANs would fail with a misleading "no LAN
+        network on the site" error.
+
+        Paging stops at the first short (or empty) page, so no arbitrary cap is
+        imposed on the number of networks returned.
+        """
+        networks: list[dict[str, Any]] = []
+        page = 1
+        while True:
+            response = cast(
+                dict[str, Any],
+                self.client.get(
+                    self._path(f"/openapi/v1/sites/{site_id}/lan-networks"),
+                    params={"page": page, "pageSize": page_size},
+                ),
+            )
+            batch = self._coerce_list_response(response)
+            networks.extend(batch)
+            if len(batch) < page_size:
+                break  # short page => last page reached
+            page += 1
+        return networks
 
     def get(
         self,
