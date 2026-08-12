@@ -12,8 +12,9 @@ by the controller `/api/info` endpoint, plus the tested device model and firmwar
 |-----|---------------|--------|--------|----------|--------|------|
 | 1.3.0 | 6.2.0.17 | 3 | SG2210XMP-M2 | 1.0.26 | ✅ pass | 2026-07-08 |
 | 1.4.0 | 6.2.10.17 | 3 | SG2210XMP-M2 v1.0 | 1.0.26 | ✅ pass | 2026-07-08 |
+| 1.5.0 | 6.2.14.11 | 3 | SG2210XMP-M2 v1.0 | 1.0.26 | ✅ pass | 2026-08-12 |
 
-The current SDK release **v1.4.0** is verified against controller `6.2.10.17`.
+The current SDK release **v1.5.0** is verified against controller `6.2.14.11`.
 
 ## Capability notes
 

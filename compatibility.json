@@ -18,6 +18,15 @@
       "firmware": "1.0.26",
       "result": "pass",
       "date": "2026-07-08"
+    },
+    {
+      "sdk_version": "1.5.0",
+      "controllerVer": "6.2.14.11",
+      "apiVer": "3",
+      "device_model": "SG2210XMP-M2 v1.0",
+      "firmware": "1.0.26",
+      "result": "pass",
+      "date": "2026-08-12"
     }
   ]
 }
