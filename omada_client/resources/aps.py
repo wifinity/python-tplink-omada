@@ -173,6 +173,103 @@ class APsResource:
             ),
         )
 
+    def get_ports(self, *, site_id: str, mac: str) -> list[dict[str, Any]]:
+        """Return per-port capability rows for one AP.
+
+        POST /aps/ports/capability (``getMultiApPortList``) with a single-MAC
+        ``apMacList``. This batch endpoint is the model-portable read: the
+        single-port GET /aps/{mac}/ports works on some AP models but returns a
+        generic error on multi-port models (e.g. EAP650GP), whereas this one
+        works across both.
+
+        Each item is an ``APLANPortList`` row keyed by the string port id
+        (``id``/``lanPort`` such as ``"ETH0"`` — there is no integer ``port``),
+        exposing the capability flags ``supportVlan``, ``supportPoe``,
+        ``supportVlanOption``, ``supportVlanTagged``, ``supportStatusEnable`` and
+        ``supportBandwidthControl`` so callers can gate writes. This is a
+        capability probe, **not** a live-state read: current ``status``/``name``/
+        ``localVlanId``/PoE state are not returned here (use ``get_port_vlans``
+        for the current VLAN associations). Returns ``[]`` when absent.
+        """
+        normalized = normalize_mac(mac)
+        response = cast(
+            dict[str, Any],
+            self.client.post(
+                self._path(f"/openapi/v1/sites/{site_id}/aps/ports/capability"),
+                json={"apMacList": [normalized]},
+            ),
+        )
+        return cast(list[dict[str, Any]], self._extract_items(response))
+
+    def get_port_vlans(self, *, site_id: str, mac: str) -> list[dict[str, Any]]:
+        """Return current per-port VLAN associations for one AP.
+
+        GET /aps/{mac}/port-vlans (``getApPortVlans``); works across AP models.
+        Each item describes one VLAN and which of the AP's ports carry it:
+        ``{localVlanId, localVlanNetworkId, name, nativePorts[], tagPorts[],
+        untagPorts[]}`` (note the plural ``*Ports`` arrays). A port whose native
+        VLAN is the default network (VLAN 1) is not enumerated here — VLAN-1
+        native is implicit. Returns ``[]`` when no non-default VLANs are set.
+        """
+        normalized = normalize_mac(mac)
+        response = cast(
+            dict[str, Any],
+            self.client.get(
+                self._path(f"/openapi/v1/sites/{site_id}/aps/{normalized}/port-vlans"),
+                params={"page": 1, "pageSize": 1000},
+            ),
+        )
+        return cast(list[dict[str, Any]], self._extract_items(response))
+
+    def update_ports(
+        self,
+        *,
+        site_id: str,
+        mac: str,
+        ports: list[str],
+        settings: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Apply per-port config to one AP's ethernet ports.
+
+        POST /aps/ports/config (``batchModifyMultiApPorts``) with
+        ``{"apMacList": [mac], "lanPortList": ports, **settings}``. ``settings``
+        is the ``BatchUpdateMultiApPortsOpenApiVO`` body minus the two list keys,
+        passed through **verbatim**, dict-first: this method does not validate,
+        translate, or default any field. This batch endpoint is the
+        model-portable write (the single-port PATCH /aps/{mac}/ports/{port}
+        errors on multi-port models).
+
+        ``ports`` are string port ids from ``get_ports`` (e.g. ``["ETH0"]``).
+
+        VLAN body (controller-verified, By-Network path — ``custom=false``):
+
+        - Native VLAN is set via ``localVlanNetworkId`` (a LAN-network id;
+          resolve VLAN id -> network id with
+          ``client.lan_networks.vlan_id_to_network_id``). Tagged/untagged
+          services via ``taggedNetworkId``/``untaggedNetworkId`` (network-id
+          lists).
+        - For **VLAN-1-untagged management** (the daisy-chain uplink), set
+          ``localVlanEnable=true`` and **omit** ``localVlanNetworkId``: native
+          then stays the default network (VLAN 1) egressed untagged. Setting
+          VLAN 1 as an explicit native — by raw ``localVlanId=1`` or by its
+          network id — is rejected by the controller (error ``-39348``).
+        - Tagged VLANs only take effect on ports whose ``get_ports`` row reports
+          ``supportVlanTagged=true``; elsewhere ``tagged*`` is silently ignored.
+
+        Returns the raw ``OperationResponseWithoutResult``; ``result``'s
+        ``configResultList`` is empty on full success and lists per-AP errors
+        otherwise. Callers do their own read-before-write via ``get_port_vlans``.
+        """
+        normalized = normalize_mac(mac)
+        body: dict[str, Any] = {"apMacList": [normalized], "lanPortList": ports, **settings}
+        return cast(
+            dict[str, Any],
+            self.client.post(
+                self._path(f"/openapi/v1/sites/{site_id}/aps/ports/config"),
+                json=body,
+            ),
+        )
+
     @staticmethod
     def _extract_items(response: dict[str, Any]) -> list[Any]:
         for key in ("data", "result", "items", "list"):

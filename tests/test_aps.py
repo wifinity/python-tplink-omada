@@ -3,6 +3,51 @@ from __future__ import annotations
 from omada_client.exceptions import DeviceNotFoundError
 from omada_client.resources.aps import APsResource
 
+# Representative AP ethernet-port fixtures (shapes verified against a live controller).
+# The capability read returns capability flags only (no live status/name/VLAN state).
+AP_PORT_CAPABILITIES = [
+    {
+        "id": "ETH0",
+        "lanPort": "ETH0",
+        "supportVlan": True,
+        "supportPoe": True,
+        "supportVlanOption": True,
+        "supportVlanTagged": True,
+        "supportStatusEnable": True,
+        "supportBandwidthControl": True,
+    },
+    {
+        "id": "ETH1",
+        "lanPort": "ETH1",
+        "supportVlan": True,
+        "supportPoe": False,
+        "supportVlanOption": True,
+        "supportVlanTagged": True,
+        "supportStatusEnable": True,
+        "supportBandwidthControl": True,
+    },
+]
+
+# port-vlans lists only non-default VLAN associations (VLAN-1 native is implicit).
+AP_PORT_VLANS = [
+    {
+        "localVlanId": 98,
+        "localVlanNetworkId": "net-98",
+        "name": "TPLAB - Open",
+        "nativePorts": ["ETH0"],
+        "tagPorts": [],
+        "untagPorts": [],
+    },
+    {
+        "localVlanId": 99,
+        "localVlanNetworkId": "net-99",
+        "name": "TPLAB - Onboarding",
+        "nativePorts": [],
+        "tagPorts": ["ETH0"],
+        "untagPorts": [],
+    },
+]
+
 
 class DummyDevicesResource:
     def __init__(self) -> None:
@@ -84,7 +129,17 @@ class DummyClient:
         self.calls.append(("GET", path, params))
         if path.endswith("/wired-uplink"):
             return {"result": {"wiredUplink": {"portType": 0, "linkStatus": 1, "linkSpeed": 3, "duplex": 2}}}
+        if path.endswith("/port-vlans"):
+            return {"result": {"totalRows": len(AP_PORT_VLANS), "data": list(AP_PORT_VLANS)}}
         return {"result": {"mac": "AA-BB-CC-DD-EE-FF", "name": "AP-Overview"}}
+
+    def post(self, path: str, json=None):
+        self.calls.append(("POST", path, json))
+        if path.endswith("/aps/ports/capability"):
+            return {"errorCode": 0, "result": list(AP_PORT_CAPABILITIES)}
+        if path.endswith("/aps/ports/config"):
+            return {"errorCode": 0, "msg": "Success.", "result": {"configResultList": []}}
+        raise AssertionError(f"unexpected POST {path}")
 
     def patch(self, path: str, json=None):
         self.calls.append(("PATCH", path, json))
@@ -429,3 +484,94 @@ def test_set_wlan_group_by_mac_requires_non_empty_group() -> None:
         assert False, "Expected ValueError for empty wlan_group"
     except ValueError as exc:
         assert "wlan_group must be a non-empty string" in str(exc)
+
+
+def test_get_ports_posts_capability_and_returns_rows() -> None:
+    client = DummyClient()
+    resource = APsResource(client)
+
+    ports = resource.get_ports(site_id="s1", mac="aa:bb:cc:dd:ee:ff")
+
+    assert ports == AP_PORT_CAPABILITIES
+    assert client.calls == [
+        ("POST", "/openapi/v1/omadac-1/sites/s1/aps/ports/capability", {"apMacList": ["AA-BB-CC-DD-EE-FF"]})
+    ]
+
+
+def test_get_ports_returns_empty_when_no_result() -> None:
+    class EmptyCapabilityClient(DummyClient):
+        def post(self, path: str, json=None):
+            self.calls.append(("POST", path, json))
+            return {"errorCode": 0, "result": []}
+
+    client = EmptyCapabilityClient()
+    resource = APsResource(client)
+
+    assert resource.get_ports(site_id="s1", mac="aa:bb:cc:dd:ee:ff") == []
+
+
+def test_get_port_vlans_gets_with_page_params_and_returns_data() -> None:
+    client = DummyClient()
+    resource = APsResource(client)
+
+    vlans = resource.get_port_vlans(site_id="s1", mac="aa:bb:cc:dd:ee:ff")
+
+    assert vlans == AP_PORT_VLANS
+    assert client.calls == [
+        ("GET", "/openapi/v1/omadac-1/sites/s1/aps/AA-BB-CC-DD-EE-FF/port-vlans", {"page": 1, "pageSize": 1000})
+    ]
+
+
+def test_update_ports_posts_config_with_merged_body_verbatim() -> None:
+    client = DummyClient()
+    resource = APsResource(client)
+
+    # Daisy-chain trunk (By-Network): VLAN-1-untagged management via omitted
+    # localVlanNetworkId, service VLANs tagged, PoE-out on.
+    settings = {
+        "status": True,
+        "poeOutEnable": True,
+        "custom": False,
+        "localVlanEnable": True,
+        "taggedNetworkId": ["net-98", "net-99"],
+        "untaggedNetworkId": [],
+    }
+    result = resource.update_ports(site_id="s1", mac="aa:bb:cc:dd:ee:ff", ports=["ETH0"], settings=settings)
+
+    assert result == {"errorCode": 0, "msg": "Success.", "result": {"configResultList": []}}
+    assert client.calls == [
+        (
+            "POST",
+            "/openapi/v1/omadac-1/sites/s1/aps/ports/config",
+            {"apMacList": ["AA-BB-CC-DD-EE-FF"], "lanPortList": ["ETH0"], **settings},
+        )
+    ]
+
+
+def test_update_ports_passes_arbitrary_fields_through_unchanged() -> None:
+    client = DummyClient()
+    resource = APsResource(client)
+
+    settings = {"name": "uplink", "status": False, "surprise": 42}
+    resource.update_ports(site_id="s1", mac="AA-BB-CC-DD-EE-FF", ports=["ETH2", "ETH3"], settings=settings)
+
+    _method, _url, body = client.calls[0]
+    assert body == {"apMacList": ["AA-BB-CC-DD-EE-FF"], "lanPortList": ["ETH2", "ETH3"], **settings}
+
+
+def test_ap_port_methods_reject_invalid_mac() -> None:
+    client = DummyClient()
+    resource = APsResource(client)
+
+    for call in (
+        lambda: resource.get_ports(site_id="s1", mac="bad-mac"),
+        lambda: resource.get_port_vlans(site_id="s1", mac="bad-mac"),
+        lambda: resource.update_ports(site_id="s1", mac="bad-mac", ports=["ETH0"], settings={"status": True}),
+    ):
+        try:
+            call()
+            assert False, "Expected ValueError for invalid MAC"
+        except ValueError as exc:
+            assert "Invalid MAC address" in str(exc)
+
+    assert client.calls == []

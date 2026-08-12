@@ -197,6 +197,30 @@ switch_result = client.aps.set_wlan_group_by_mac(
     wlan_group="Corp",
 )
 
+# --- AP ethernet ports (daisy-chain support) ---
+# Per-port capability flags (gate writes on these); string port ids ("ETH0"...)
+ports = client.aps.get_ports(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
+# Current per-port VLAN associations (native/tagged/untagged)
+port_vlans = client.aps.get_port_vlans(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
+
+# Configure a daisy-chain trunk on ETH0: management untagged on VLAN 1 + services tagged.
+# By-Network path (custom=False). For VLAN-1-untagged management, OMIT
+# localVlanNetworkId (an explicit VLAN-1 native is rejected by the controller).
+vlan_map = client.lan_networks.vlan_id_to_network_id(site_id="your-site-id")
+client.aps.update_ports(
+    site_id="your-site-id",
+    mac="AA-BB-CC-DD-EE-FF",
+    ports=["ETH0"],
+    settings={
+        "status": True,
+        "poeOutEnable": True,          # power the downstream AP
+        "custom": False,               # By Network
+        "localVlanEnable": True,       # native left unset -> default VLAN 1, untagged
+        "taggedNetworkId": [vlan_map[98], vlan_map[99]],
+        "untaggedNetworkId": [],
+    },
+)
+
 # Register, update, adopt, and delete
 created_ap = client.aps.create(site_id="your-site-id", device_key="ZTP-DEVICE-KEY")
 client.aps.update(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF", data={"name": "hostname"})
@@ -219,6 +243,17 @@ preserves raw numeric fields and adds `portTypeMeaning`, `linkStatusMeaning`,
 `linkSpeedMeaning`, and `duplexMeaning` (unknown codes map to deterministic
 fallbacks like `Unknown linkSpeed: <code>`). `start_adopt`/`check_adopt` are thin
 shortcuts that delegate to the canonical `client.devices` adopt operations.
+
+`get_ports`/`get_port_vlans`/`update_ports` wrap the AP ethernet-port endpoints
+(the batch `POST /aps/ports/capability` + `POST /aps/ports/config`, which work
+across single- and multi-port AP models — the single-port `GET /ports` /
+`PATCH /ports/{port}` error on multi-port models). `get_ports` returns capability
+flags only (not live state); gate writes on `supportVlanTagged` — tagged VLANs
+are silently ignored on ports that do not support them. `update_ports` passes
+`settings` through verbatim (dict-first). Note the controller **rejects VLAN 1 as
+an explicit native** (error `-39348`): for VLAN-1-untagged management, omit
+`localVlanNetworkId` as shown above. The 8-VLAN hardware limit is not enforced
+here — that is the caller's responsibility.
 
 ### AP Groups
 

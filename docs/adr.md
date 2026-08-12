@@ -1153,3 +1153,81 @@ filters client-side on `item.get("sn") == serial`, augments with
 - Same pagination limitation as the other `SwitchesResource` lookups (first
   `page_size`, default 1000, devices searched).
 
+## Decision 39 (2026-08): AP ethernet-port methods via the batch endpoints
+
+### Context
+
+The AP-to-AP daisy-chain feature needs to read and write AP ethernet-port
+config (a parent AP feeds a downstream AP from a PoE port). `APsResource` had no
+port methods. The Omada spec exposes two endpoint families for AP ports:
+
+- **single-port**: `GET /aps/{mac}/ports` (`getApPortList`),
+  `GET /aps/{mac}/port-vlans` (`getApPortVlans`),
+  `PATCH /aps/{mac}/ports/{port}` (`modifyApPort`);
+- **batch**: `POST /aps/ports/capability` (`getMultiApPortList`),
+  `POST /aps/ports/config` (`batchModifyMultiApPorts`).
+
+Live validation against two controllers (EAP725-Wall; EAP650GP-Desktop with an
+EAP723 downstream) established that **the single-port `GET /ports` and
+`PATCH /ports/{port}` return a generic error on multi-port AP models** (e.g.
+EAP650GP/723 — the models the feature targets), while the **batch endpoints and
+`GET /port-vlans` work across both model families**.
+
+### Decision
+
+Add three keyword-only, dict-first methods to `APsResource`, wrapping the
+**batch** endpoints with single-AP ergonomics (the feature configures one AP at a
+time), and **not** wrapping the single-port `getApPortList`/`modifyApPort`
+(unreliable across models, and redundant given the batch family):
+
+- `get_ports(*, site_id, mac)` -> `POST /aps/ports/capability` with a single-MAC
+  `apMacList`; returns the per-port capability rows. This is a **capability
+  probe** (flags `supportVlan`/`supportPoe`/`supportVlanOption`/
+  `supportVlanTagged`/`supportStatusEnable`/`supportBandwidthControl`), not a
+  live-state read — current `status`/`name`/`localVlanId` are not returned.
+- `get_port_vlans(*, site_id, mac)` -> `GET /aps/{mac}/port-vlans`; returns the
+  current per-port VLAN associations.
+- `update_ports(*, site_id, mac, ports, settings)` -> `POST /aps/ports/config`
+  with `{apMacList:[mac], lanPortList:ports, **settings}`; `settings` passed
+  through verbatim (same passthrough contract as
+  `SwitchesResource.update_switch_port`, Decision 32).
+
+Ports are addressed by their string id (`"ETH0"`…); there is no integer `port`.
+
+### Controller-verified VLAN model (documented on `update_ports`)
+
+- The write uses the **By-Network** path (`custom=false`): native via
+  `localVlanNetworkId`, tagged/untagged via `taggedNetworkId`/`untaggedNetworkId`
+  (LAN-network ids — resolvable with `lan_networks.vlan_id_to_network_id`).
+- **VLAN 1 cannot be set as an explicit native** — the controller rejects both a
+  raw `localVlanId=1` and `localVlanNetworkId=<VLAN-1 network>` with error
+  `-39348`. VLAN-1-untagged management (the daisy-chain uplink) is obtained by
+  setting `localVlanEnable=true` and **omitting** `localVlanNetworkId`; native
+  then stays the default network egressed untagged (verified end-to-end: the
+  downstream AP powered via `poeOutEnable` and pulled DHCP on VLAN 1).
+- Tagged VLANs apply only where the capability row reports
+  `supportVlanTagged=true` (silently ignored otherwise). This gate is the
+  caller's responsibility (workflow layer), not enforced here.
+
+### Spec drift noted (spec vs. live)
+
+- Port identity is a string `id`/`lanPort`; the spec's `APLANPortList` claims an
+  integer `port` that the controller does not return.
+- `port-vlans` returns plural `nativePorts`/`tagPorts`/`untagPorts`; the spec's
+  `ApVlansVO` says singular `nativePort`/`tagPort`/`untagPort` + `ipaddr`.
+- `POST /aps/ports/config` returns `result.configResultList` (empty on success).
+
+### Alternatives considered
+
+1. Wrap the single-port endpoints as the task originally specified — rejected:
+   they error on the multi-port models the feature must configure.
+2. Wrap both families and dispatch by model — rejected as unnecessary surface:
+   the batch family already covers both models.
+
+### Consequences
+
+- New controller write path -> **minor** version bump (1.4.5 -> 1.5.0).
+- `update_ports` stays logic-free (verbatim passthrough); VLAN-body correctness,
+  the `supportVlanTagged` gate, and the 8-VLAN hardware limit live in the caller
+  (render/workflow layers).
+
