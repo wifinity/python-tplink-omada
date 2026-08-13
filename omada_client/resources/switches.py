@@ -301,6 +301,27 @@ class SwitchesResource:
             ),
         )
 
+    def update(self, *, site_id: str, mac: str, data: dict[str, Any]) -> dict[str, Any]:
+        """Apply switch general config (device identity), dict-first.
+
+        PATCH /openapi/v1/.../sites/{siteId}/switches/{switchMac}/general-config with
+        ``data`` as the ``SwitchGeneralConfig`` body, passed through verbatim — same
+        convention as ``APsResource.update``. Fields include ``name`` (hostname/display
+        name), ``jumbo``, ``lagHashAlg``, ``ledSetting``, ``location``, ``sdm``, and
+        ``tagIds`` (see Decision 33 in docs/adr.md for the full field list and why STP
+        settings do not live here). Today callers only send ``{"name": ...}``.
+
+        Returns the raw controller response (``OperationResponseWithoutResult``).
+        """
+        normalized_mac = normalize_mac(mac)
+        return cast(
+            dict[str, Any],
+            self.client.patch(
+                self.client.api_path(f"/openapi/v1/sites/{site_id}/switches/{normalized_mac}/general-config"),
+                json=data,
+            ),
+        )
+
     def create_port_profile(self, *, site_id: str, profile: dict[str, Any]) -> dict[str, Any]:
         """Create a LAN port profile from a dict-first profile body.
 

@@ -1231,3 +1231,48 @@ Ports are addressed by their string id (`"ETH0"`…); there is no integer `port`
   the `supportVlanTagged` gate, and the 8-VLAN hardware limit live in the caller
   (render/workflow layers).
 
+## Decision 40 (2026-08): `SwitchesResource.update` — general-config PATCH (device identity)
+
+### Context
+
+the workflow layer needs to sync a switch's Omada display name against inventory's
+rendered name on every automation run, mirroring `APsResource.update` for APs
+(which callers already use every run, not only at initial adoption). No SDK
+method exposed switch-level general config. Decision 33 already enumerated
+`SwitchGeneralConfig`'s fields while explaining why STP/loopback settings do
+**not** live there:
+
+- PATCH `/openapi/v1/.../sites/{siteId}/switches/{switchMac}/general-config` —
+  body `SwitchGeneralConfig` (`name`, `jumbo`, `lagHashAlg`, `ledSetting`,
+  `location`, `sdm`, `tagIds`), response `OperationResponseWithoutResult`. This
+  is the switch analog of `ApGeneralConfig`, which `APsResource.update` already
+  wraps the same way.
+
+### Decision
+
+- Add `SwitchesResource.update(*, site_id, mac, data)` (keyword-only,
+  dict-first): normalize `mac`, PATCH the general-config endpoint with `data`
+  verbatim, return the raw controller response — same signature and behavior as
+  `APsResource.update`.
+- No GET/read twin added here: `switches.get_by_mac`'s existing `name` field
+  already exposes current state to the one caller that needs it
+  (`get_switch_status`), same as the AP side reads `name` off `aps.get_by_mac`.
+- Body passed through unvalidated; the caller decides which
+  `SwitchGeneralConfig` fields to send (today only `{"name": ...}`, for
+  hostname sync).
+
+### Consequences
+
+- `client.switches.update(site_id=..., mac=..., data={"name": "new-hostname"})`
+  → raw `OperationResponseWithoutResult`.
+- Future callers needing `jumbo`/`location`/etc. pass them the same way; no
+  per-field methods added.
+- **Not yet verified against a live controller** (no lab access in this pass —
+  the baseline controller used for Decisions 32/33 was unreachable). Modeled
+  directly on `APsResource.update`'s already-verified `ApGeneralConfig` PATCH,
+  but unlike Decision 32 (per-port PATCH, confirmed **not** sparse) this has not
+  been confirmed to accept a partial body. Treat the sparse-vs-full-body
+  behavior as **unconfirmed** until checked against a live switch; flag for
+  follow-up verification before relying on partial bodies beyond `{"name": ...}`.
+- New controller write path -> version bump (1.5.0 -> 1.5.1).
+

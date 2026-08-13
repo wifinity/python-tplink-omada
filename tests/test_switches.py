@@ -682,6 +682,43 @@ def test_update_switch_port_rejects_invalid_mac() -> None:
     assert http.requests == []
 
 
+def test_update_patches_general_config_url_with_normalized_mac() -> None:
+    http = DummyHttpClient()
+    resource = SwitchesResource(http)
+
+    resource.update(site_id="site-1", mac="aa:bb:cc:dd:ee:ff", data={"name": "new-hostname"})
+
+    method, url, kwargs = http.requests[0]
+    assert method == "PATCH"
+    assert "/openapi/v1/OMADACID/" in url
+    assert "switches/AA-BB-CC-DD-EE-FF/general-config" in url
+    assert kwargs["json"] == {"name": "new-hostname"}
+
+
+def test_update_passes_arbitrary_general_config_fields_through_unchanged() -> None:
+    http = DummyHttpClient()
+    resource = SwitchesResource(http)
+
+    data = {"name": "sw-1", "jumbo": True, "ledSetting": 1}
+    resource.update(site_id="site-1", mac="AA-BB-CC-DD-EE-FF", data=data)
+
+    _method, _url, kwargs = http.requests[0]
+    assert kwargs["json"] == data
+
+
+def test_update_rejects_invalid_mac() -> None:
+    http = DummyHttpClient()
+    resource = SwitchesResource(http)
+
+    try:
+        resource.update(site_id="site-1", mac="bad-mac", data={"name": "x"})
+        assert False, "Expected ValueError for invalid MAC"
+    except ValueError as exc:
+        assert "Invalid MAC address" in str(exc)
+
+    assert http.requests == []
+
+
 def test_update_loopback_control_puts_correct_url_with_normalized_mac() -> None:
     http = DummyHttpClient()
     resource = SwitchesResource(http)
