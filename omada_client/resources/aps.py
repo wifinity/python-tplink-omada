@@ -6,7 +6,7 @@ from typing import Any, cast
 
 from ..mac import normalize_mac
 from ..exceptions import DeviceNotFoundError
-from .devices import augment_device_status_meanings
+from .devices import LINK_SPEED_MBPS, assign_numeric_value, augment_device_status_meanings
 
 _AP_WIRED_UPLINK_PORT_TYPE_MEANINGS: dict[int, str] = {
     0: "ETH",
@@ -318,6 +318,12 @@ class APsResource:
             code_field="linkSpeed",
             meaning_field="linkSpeedMeaning",
             meanings=_AP_WIRED_UPLINK_LINK_SPEED_MEANINGS,
+        )
+        assign_numeric_value(
+            payload=wired_uplink,
+            code_field="linkSpeed",
+            value_field="linkSpeedMbps",
+            values=LINK_SPEED_MBPS,
         )
         APsResource._assign_meaning(
             payload=wired_uplink,

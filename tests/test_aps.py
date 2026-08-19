@@ -231,6 +231,7 @@ def test_aps_resource_delegates_to_devices_with_ap_options() -> None:
                 "linkStatusMeaning": "Up",
                 "linkSpeed": 3,
                 "linkSpeedMeaning": "1000M",
+                "linkSpeedMbps": 1000,
                 "duplex": 2,
                 "duplexMeaning": "Full",
             }
@@ -386,6 +387,33 @@ def test_aps_resource_applies_unknown_wired_uplink_meaning_fallbacks() -> None:
     assert uplink["linkStatusMeaning"] == "Unknown linkStatus: 99"
     assert uplink["linkSpeedMeaning"] == "Unknown linkSpeed: 99"
     assert uplink["duplexMeaning"] == "Unknown duplex: 99"
+    assert "linkSpeedMbps" not in uplink
+
+
+def test_aps_resource_omits_link_speed_mbps_for_auto_code() -> None:
+    class AutoLinkSpeedClient(DummyClient):
+        def get(self, path: str, params=None):
+            self.calls.append(("GET", path, params))
+            if path.endswith("/wired-uplink"):
+                return {
+                    "result": {
+                        "wiredUplink": {
+                            "portType": 0,
+                            "linkStatus": 1,
+                            "linkSpeed": 0,
+                            "duplex": 2,
+                        }
+                    }
+                }
+            return {"result": {"mac": "AA-BB-CC-DD-EE-FF", "name": "AP-Overview"}}
+
+    client = AutoLinkSpeedClient()
+    resource = APsResource(client)
+    wired_uplink = resource.get_wired_uplink_by_mac(site_id="s1", mac="aa:bb:cc:dd:ee:ff")
+
+    uplink = wired_uplink["result"]["wiredUplink"]
+    assert uplink["linkSpeedMeaning"] == "Auto"
+    assert "linkSpeedMbps" not in uplink
 
 
 def test_get_overview_by_mac_enriches_wlan_group_name() -> None:

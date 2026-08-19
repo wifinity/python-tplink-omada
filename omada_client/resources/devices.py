@@ -28,6 +28,21 @@ _DEVICE_STATUS_MEANINGS: dict[int, str] = {
     4: "Isolated",
 }
 
+# Shared across AP wired-uplink and switch port linkSpeed codes - Mbps for each code that
+# has a defined rate. Code 0 ("Auto") has no rate of its own and is intentionally omitted;
+# linkSpeedMbps is left unset rather than given a placeholder value when the live code
+# isn't in this map (see assign_numeric_value).
+LINK_SPEED_MBPS: dict[int, int] = {
+    1: 10,
+    2: 100,
+    3: 1000,
+    4: 2500,
+    5: 10000,
+    6: 5000,
+    7: 25000,
+    8: 100000,
+}
+
 _DEVICE_DETAIL_STATUS_MEANINGS: dict[int, str] = {
     0: "Disconnected",
     1: "Disconnected(Migrating)",
@@ -243,6 +258,23 @@ class DevicesResource:
                 adopt_failed_type,
                 f"Unknown adoptFailedType: {adopt_failed_type}",
             )
+
+
+def assign_numeric_value(
+    *,
+    payload: dict[str, Any],
+    code_field: str,
+    value_field: str,
+    values: dict[int, int],
+) -> None:
+    """Derive a numeric value (e.g. Mbps) from an enum-coded field, when the code is known.
+
+    Unlike ``*Meaning`` string decoding, there is no sensible fallback for an unmapped
+    numeric code — the field is simply omitted rather than set to a placeholder.
+    """
+    value = payload.get(code_field)
+    if isinstance(value, int) and value in values:
+        payload[value_field] = values[value]
 
 
 def augment_device_status_meanings(device_info: dict[str, Any]) -> None:

@@ -1062,6 +1062,16 @@ program: public SDK carries the sanitized subset; private repo carries the rest)
 - Patch origin is machine-readable and consistent across all local patches.
 - The SDK has a public, sanitized compatibility/behaviour surface without exposing
   internal usage, coverage, or roadmap.
+- **This sanitization rule applies to every file in this repo, including new ADR
+  entries, `README.md` examples, and test fixtures.** Concretely, never commit:
+  internal repository, service, or system names (workflow/conformance/test-harness
+  repos, inventory or monitoring systems); private test names; real site, network,
+  or profile IDs; real device MACs or serials; controller hostnames/IPs; or
+  credentials. Use placeholders (`your-site-id`), documentation MACs
+  (`AA-BB-CC-DD-EE-FF`, `11-22-33-44-55-66`), and neutral phrasing ("callers need
+  to…", "verified against a live controller — see `COMPATIBILITY.md`"). Controller
+  version / device model / firmware remain publishable, as that is exactly the
+  matrix this decision sanctions.
 - `x-provenance` keys are merged into `spec/fixed/all-fixed.json`; they are valid
   OpenAPI extensions and do not affect `spec-validate` or model generation.
 - Future divergences from the upstream patch set (added or deliberately withheld)
@@ -1235,8 +1245,8 @@ Ports are addressed by their string id (`"ETH0"`…); there is no integer `port`
 
 ### Context
 
-the workflow layer needs to sync a switch's Omada display name against inventory's
-rendered name on every automation run, mirroring `APsResource.update` for APs
+Callers need to sync a switch's Omada display name against an external source
+of truth on every automation run, mirroring `APsResource.update` for APs
 (which callers already use every run, not only at initial adoption). No SDK
 method exposed switch-level general config. Decision 33 already enumerated
 `SwitchGeneralConfig`'s fields while explaining why STP/loopback settings do
@@ -1267,12 +1277,69 @@ method exposed switch-level general config. Decision 33 already enumerated
   → raw `OperationResponseWithoutResult`.
 - Future callers needing `jumbo`/`location`/etc. pass them the same way; no
   per-field methods added.
-- **Not yet verified against a live controller** (no lab access in this pass —
-  the baseline controller used for Decisions 32/33 was unreachable). Modeled
-  directly on `APsResource.update`'s already-verified `ApGeneralConfig` PATCH,
-  but unlike Decision 32 (per-port PATCH, confirmed **not** sparse) this has not
-  been confirmed to accept a partial body. Treat the sparse-vs-full-body
-  behavior as **unconfirmed** until checked against a live switch; flag for
-  follow-up verification before relying on partial bodies beyond `{"name": ...}`.
+- **Verified against a live controller** (see `COMPATIBILITY.md` for the
+  verified controller/firmware combinations): unlike
+  Decision 32's per-port PATCH (confirmed **not** sparse — rejects a partial
+  body), the switch general-config PATCH **does accept a partial body** —
+  `{"name": ...}` alone applied and read back correctly, with the rest of
+  `SwitchGeneralConfig` (`jumbo`/`lagHashAlg`/`ledSetting`/`location`/`sdm`/
+  `tagIds`) left untouched. Same sparse-PATCH behavior as
+  `APsResource.update`'s `ApGeneralConfig`.
 - New controller write path -> version bump (1.5.0 -> 1.5.1).
+
+## Decision 41 (2026-08): Decode switch port status enums and add linkSpeedMbps to AP/switch link speed data
+
+### Context
+
+`client.aps.get_wired_uplink_by_mac(...)` already returns human-readable
+`linkSpeedMeaning`/`duplexMeaning`/etc. fields alongside raw numeric codes
+(Decision 15). `client.switches.get_ports()` had no equivalent: each port's
+`portStatus` only exposed raw numeric `linkStatus`/`linkSpeed`/`duplex`
+codes, forcing consumers to duplicate mapping tables just as Decision 15's
+motivating problem described for APs. Separately, consumers comparing link
+speed across an AP and its uplink switch port need a plain comparable
+number, not just a label string.
+
+The OpenAPI spec's own documented `linkSpeed` enum for the switch port
+schema (`OswPortStatusVO`) is stale/incomplete for multi-gig ports (`1:
+10Mbps; 2: 100Mbps; 3: 1000Mbps; 4: 10Gbps` — no 2.5G tier, no code 5). This
+mirrors Decision 15's own caveat that decoded tables must be validated
+against live behavior, not just the spec text.
+
+### Decision
+
+- Enrich `client.switches.get_ports()`'s per-port `portStatus` with decoded
+  meaning fields, mirroring Decision 15's pattern exactly:
+  - `linkStatusMeaning` derived from `linkStatus`
+  - `linkSpeedMeaning` derived from `linkSpeed`
+  - `duplexMeaning` derived from `duplex`
+  - No `portTypeMeaning` equivalent — switches have no `portType` field.
+- Use the **live-confirmed** switch `linkSpeed` coding (`1=10M, 2=100M,
+  3=1000M, 4=2500M, 5=10G`) rather than the spec's stale text, matching the
+  coding confirmed against a real controller.
+- Keep the same deterministic fallback for unknown codes as Decision 15:
+  `Unknown <field>: <code>`.
+- Additionally, on **both** `get_wired_uplink_by_mac` (AP) and `get_ports`
+  (switch), add a `linkSpeedMbps` integer field derived from `linkSpeed`,
+  alongside the existing/new `linkSpeedMeaning` string. Unlike `*Meaning`
+  decoding, there is no placeholder for an unmapped code — `linkSpeedMbps` is
+  simply omitted when the code has no defined rate (e.g. code `0`, "Auto").
+- Share one `linkSpeed` -> Mbps table (`devices.LINK_SPEED_MBPS`) between the
+  AP and switch resources, since both use the same underlying Omada speed
+  coding: `{1: 10, 2: 100, 3: 1000, 4: 2500, 5: 10000, 6: 5000, 7: 25000, 8:
+  100000}`.
+
+### Consequences
+
+- Downstream callers comparing AP and switch uplink speed can compare either
+  human-readable labels or plain Mbps integers on both endpoints
+  symmetrically, without maintaining local enum maps on either side.
+- Raw numeric fields remain available for filtering and compatibility on both
+  endpoints.
+- The switch-side `*Meaning` table intentionally diverges from the OpenAPI
+  spec's documented `OswPortStatusVO.linkSpeed` enum, trusting live-confirmed
+  behavior instead — re-verify against a live controller if a future
+  multi-gig tier (5G/25G) is seen live on a switch port, since today's switch
+  table only covers what's been observed (up to 10G).
+- New non-breaking field additions -> version bump (1.5.1 -> 1.6.0).
 

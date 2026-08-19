@@ -292,6 +292,66 @@ def test_get_ports_returns_empty_when_switch_not_found() -> None:
     assert ports == []
 
 
+def test_get_ports_decodes_port_status_meanings_and_mbps() -> None:
+    http = DummyHttpClient()
+    http._post_response = {
+        "result": [
+            {
+                "mac": "AA-BB-CC-DD-EE-FF",
+                "ports": [
+                    {
+                        "port": 1,
+                        "name": "AP",
+                        "disable": False,
+                        "portStatus": {"linkStatus": 1, "linkSpeed": 3, "duplex": 2},
+                    },
+                ],
+            },
+        ]
+    }
+    resource = SwitchesResource(http)
+
+    ports = resource.get_ports(site_id="site-1", switch_mac="aa:bb:cc:dd:ee:ff")
+
+    assert ports[0]["portStatus"] == {
+        "linkStatus": 1,
+        "linkStatusMeaning": "Up",
+        "linkSpeed": 3,
+        "linkSpeedMeaning": "1000M",
+        "linkSpeedMbps": 1000,
+        "duplex": 2,
+        "duplexMeaning": "Full",
+    }
+
+
+def test_get_ports_applies_unknown_port_status_meaning_fallbacks() -> None:
+    http = DummyHttpClient()
+    http._post_response = {
+        "result": [
+            {
+                "mac": "AA-BB-CC-DD-EE-FF",
+                "ports": [
+                    {
+                        "port": 1,
+                        "name": "AP",
+                        "disable": False,
+                        "portStatus": {"linkStatus": 99, "linkSpeed": 99, "duplex": 99},
+                    },
+                ],
+            },
+        ]
+    }
+    resource = SwitchesResource(http)
+
+    ports = resource.get_ports(site_id="site-1", switch_mac="aa:bb:cc:dd:ee:ff")
+
+    port_status = ports[0]["portStatus"]
+    assert port_status["linkStatusMeaning"] == "Unknown linkStatus: 99"
+    assert port_status["linkSpeedMeaning"] == "Unknown linkSpeed: 99"
+    assert port_status["duplexMeaning"] == "Unknown duplex: 99"
+    assert "linkSpeedMbps" not in port_status
+
+
 def test_set_ports_name_sends_correct_body() -> None:
     http = DummyHttpClient()
     resource = SwitchesResource(http)

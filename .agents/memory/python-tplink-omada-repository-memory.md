@@ -46,9 +46,9 @@
   - `vlan` sets `vlanId` and Anchor-style `vlanSetting` (Omada create requires both when `vlanEnable`); mutually exclusive with `vlan_setting` dict.
   - `ppsk_profile_name` on `ppsk_local` create resolves Omada id via `GET .../ppsk-profiles` (exact `profileName` match); `radius_profile_name`+`nas_id` for `dpsk` resolves id via `GET .../profiles/radius` (exact `name` match; not with `ppsk_setting`).
   - `pmf_mode` overrides defaults (`2` open/open-isolated, `3` psk/ppsk_local/dpsk); `mac_format` defaults to `2`.
-  - `multicast_config={...}` on create POSTs then PATCHes flat `UpdateSsidMultiCastOpenApiVO` fields when set (before optional `rate_control`, then rate limit); reject nested `multiCast` wrapper. `update_multicast_config(..., multicast_data=...)` requires explicit dict (no SDK preset builders; the caller own GUEST/SECURED dicts per `caller-owned WLAN samples`).
+  - `multicast_config={...}` on create POSTs then PATCHes flat `UpdateSsidMultiCastOpenApiVO` fields when set (before optional `rate_control`, then rate limit); reject nested `multiCast` wrapper. `update_multicast_config(..., multicast_data=...)` requires explicit dict (no SDK preset builders; callers own their own GUEST/SECURED dicts).
   - Every `create()` POSTs then PATCHes `update-rate-limit` with site profile `name=="Default"` unless `rate_limit_profile_id` is set; `update_rate_limit(...)` for standalone PATCH. `build_rate_limit_profile_body(profile_id)` builds nested PATCH body (limits off in customSetting).
-  - `rate_control={...}` on create POSTs then PATCHes `update-rate-control` with caller-supplied flat dict (`UpdateSsidRateControlOpenApiVO` fields); after multicast PATCH when both are set. No SDK template builder — define dict in pack/caller (see `caller-owned WLAN samples`); GET nests under `detail["rateControl"]`, PATCH body is flat. `update_rate_control(...)` for standalone PATCH.
+  - `rate_control={...}` on create POSTs then PATCHes `update-rate-control` with caller-supplied flat dict (`UpdateSsidRateControlOpenApiVO` fields); after multicast PATCH when both are set. No SDK template builder — define the dict in the caller; GET nests under `detail["rateControl"]`, PATCH body is flat. `update_rate_control(...)` for standalone PATCH.
   - Use package helper `strip_ssid_detail_for_create` when cloning from GET detail into a create body.
   - `filter(*, site_id, wlan_group, **criteria)` lists via `all` then client-side equality match; strict criterion keys; `ssid` criterion matches JSON `name`; optional `searchKey` list optimization for name-only criteria.
   - `update_basic_config(..., id|name, network_data=None, **kwargs)` GETs detail, merges into `UpdateSsidBasicConfigOpenApiVO`, PATCHes `.../update-basic-config`; `ssid` in overrides maps to `name`.
@@ -83,6 +83,7 @@
 - Link new ADRs and notable constraints for future sessions.
 
 ## ADR conventions
+- Public-repo sanitization (Decision 35) applies to every file, including new ADR entries, README examples, and test fixtures: no internal repo/service/system names, private test names, real site/network IDs, real device MACs or serials, controller hosts, or credentials. Use placeholders (`your-site-id`) and documentation MACs (`AA-BB-CC-DD-EE-FF`, `11-22-33-44-55-66`). Controller version / device model / firmware are publishable (that is the COMPATIBILITY.md matrix).
 - ADR history is intentionally maintained as a single evolving file:
   - `docs/adr.md`
 - Multiple accepted decisions are recorded as distinct decision sections within that file (not separate ADR files).
@@ -99,7 +100,7 @@
 - Wi-Fi SSID create expanded types and `strip_ssid_detail_for_create` are recorded in `docs/adr.md` Decision 18 and should be applied to future Wi-Fi create API changes.
 - Wi-Fi SSID `filter` / `update_basic_config` and `ssid_detail_to_basic_config_patch` are recorded in `docs/adr.md` Decision 19.
 - Wi-Fi SSID rate control (`rate_control` on create, `update_rate_control`) is recorded in `docs/adr.md` Decision 20; rate-control templates live outside the SDK.
-- Wi-Fi SSID generic multicast (`multicast_config` on create) is recorded in `docs/adr.md` Decision 22; multicast preset dicts live outside the SDK (the caller).
+- Wi-Fi SSID generic multicast (`multicast_config` on create) is recorded in `docs/adr.md` Decision 22; multicast preset dicts live outside the SDK, in the caller.
 - Wi-Fi create type `open-isolated` (replaces `guest`) is recorded in `docs/adr.md` Decision 23.
 - PPSK profile name lookup on `ppsk_local` create is recorded in `docs/adr.md` Decision 24 (`ppsk_profile_name`, not `ppsk_profile_id`).
 - Switch LAN port-profile CRUD (`create_port_profile`, `update_port_profile`, `delete_port_profile`, `upsert_port_profile` on `SwitchesResource`, v2 `/lan-profiles`) is recorded in `docs/adr.md` Decision 31; upsert returns `(dict, created)` and updates on conflict (unlike Decision 28's create-if-absent RADIUS upsert).

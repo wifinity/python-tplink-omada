@@ -6,7 +6,31 @@ from typing import Any, cast
 
 from ..exceptions import DeviceNotFoundError
 from ..mac import normalize_mac
-from .devices import augment_device_status_meanings
+from .devices import LINK_SPEED_MBPS, assign_numeric_value, augment_device_status_meanings
+
+# Confirmed live against get_ports() on the dev baseline controller - the OpenAPI spec's
+# documented linkSpeed enum for OswPortStatusVO (1: 10Mbps; 2: 100Mbps; 3: 1000Mbps;
+# 4: 10Gbps) is stale/incomplete for multi-gig ports; this table reflects the
+# live-observed coding, which matches the AP wired-uplink codes for the tiers switches
+# actually report (no 5G/25G/100G tiers seen live on switch ports).
+_SWITCH_PORT_LINK_STATUS_MEANINGS: dict[int, str] = {
+    0: "Down",
+    1: "Up",
+}
+
+_SWITCH_PORT_LINK_SPEED_MEANINGS: dict[int, str] = {
+    1: "10M",
+    2: "100M",
+    3: "1000M",
+    4: "2500M",
+    5: "10G",
+}
+
+_SWITCH_PORT_DUPLEX_MEANINGS: dict[int, str] = {
+    0: "Auto",
+    1: "Half",
+    2: "Full",
+}
 
 
 class SwitchesResource:
@@ -141,7 +165,12 @@ class SwitchesResource:
                 continue
             if self._matches_mac(sw.get("mac"), normalized):
                 ports = sw.get("ports") or []
-                return list(ports) if isinstance(ports, list) else []
+                if not isinstance(ports, list):
+                    return []
+                for port in ports:
+                    if isinstance(port, dict):
+                        self._augment_port_status_meanings(port)
+                return list(ports)
         return []
 
     def set_ports_name(
@@ -437,3 +466,45 @@ class SwitchesResource:
             return normalize_mac(value) == normalized_mac
         except ValueError:
             return False
+
+    @staticmethod
+    def _assign_meaning(
+        *,
+        payload: dict[str, Any],
+        code_field: str,
+        meaning_field: str,
+        meanings: dict[int, str],
+    ) -> None:
+        value = payload.get(code_field)
+        if isinstance(value, int):
+            payload[meaning_field] = meanings.get(value, f"Unknown {code_field}: {value}")
+
+    @classmethod
+    def _augment_port_status_meanings(cls, port: dict[str, Any]) -> None:
+        port_status = port.get("portStatus")
+        if not isinstance(port_status, dict):
+            return
+        cls._assign_meaning(
+            payload=port_status,
+            code_field="linkStatus",
+            meaning_field="linkStatusMeaning",
+            meanings=_SWITCH_PORT_LINK_STATUS_MEANINGS,
+        )
+        cls._assign_meaning(
+            payload=port_status,
+            code_field="linkSpeed",
+            meaning_field="linkSpeedMeaning",
+            meanings=_SWITCH_PORT_LINK_SPEED_MEANINGS,
+        )
+        assign_numeric_value(
+            payload=port_status,
+            code_field="linkSpeed",
+            value_field="linkSpeedMbps",
+            values=LINK_SPEED_MBPS,
+        )
+        cls._assign_meaning(
+            payload=port_status,
+            code_field="duplex",
+            meaning_field="duplexMeaning",
+            meanings=_SWITCH_PORT_DUPLEX_MEANINGS,
+        )

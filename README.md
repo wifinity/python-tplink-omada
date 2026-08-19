@@ -182,7 +182,7 @@ aps = client.aps.all(site_id="your-site-id")
 # Look up AP DeviceInfo by MAC, name, or serial number
 ap_device = client.aps.get_by_mac(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
 ap_device_by_name = client.aps.get_by_name(site_id="your-site-id", name="Lobby-AP-01")
-ap_device_by_serial = client.aps.get_by_serial(site_id="your-site-id", serial="AABB12345678")
+ap_device_by_serial = client.aps.get_by_serial(site_id="your-site-id", serial="your-device-serial")
 
 # AP overview payload by MAC (adds result.wlanGroupName when wlanId resolves)
 ap_overview = client.aps.get_overview_by_mac(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
@@ -279,7 +279,7 @@ delegating adopt operations to `client.devices.start_adopt(...)` /
 switches = client.switches.all(site_id="your-site-id")
 switch_device = client.switches.get_by_mac(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
 switch_device_by_name = client.switches.get_by_name(site_id="your-site-id", name="Core-SW-01")
-switch_device_by_serial = client.switches.get_by_serial(site_id="your-site-id", serial="AABB12345678")
+switch_device_by_serial = client.switches.get_by_serial(site_id="your-site-id", serial="your-device-serial")
 
 # Register, adopt, and delete
 created_switch = client.switches.create(site_id="your-site-id", device_key="ZTP-DEVICE-KEY")

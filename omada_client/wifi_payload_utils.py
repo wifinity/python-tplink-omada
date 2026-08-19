@@ -114,7 +114,7 @@ def _default_ppsk_psk_setting() -> dict[str, Any]:
 def _build_rate_limit_profile_body(profile_id: str) -> dict[str, Any]:
     """Build ``UpdateSsidRateLimitOpenApiVO`` attaching a site rate-limit profile (limits off in customSetting).
 
-    Matches ``caller-owned WLAN samples`` ``clientRateLimit`` / ``ssidRateLimit`` shape (GET nests under those keys;
+    Matches the ``clientRateLimit`` / ``ssidRateLimit`` shape (GET nests under those keys;
     PATCH uses this flat pair at the top level).
     """
     if not isinstance(profile_id, str) or not profile_id:
