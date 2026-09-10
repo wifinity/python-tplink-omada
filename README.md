@@ -131,6 +131,34 @@ client.site_services.update_snmp(
 `update_snmp` requires `snmpv1v2c_enable` and `snmpv3_enable`; `community_string`,
 `username`, and `password` are optional and only sent when provided.
 
+### Site Wireless
+
+`client.site_wireless` manages site-level wireless feature settings: mesh and the
+Management Frame Control panel (per-band airtime fairness).
+
+```python
+# Mesh master enable
+mesh = client.site_wireless.get_mesh(site_id="your-site-id")
+client.site_wireless.set_mesh(site_id="your-site-id", enabled=False)
+
+# Airtime fairness (Management Frame Control), per band
+airtime = client.site_wireless.get_airtime_fairness(site_id="your-site-id")
+client.site_wireless.set_airtime_fairness(
+    site_id="your-site-id",
+    enable_2g=True,
+    enable_5g=True,
+    enable_6g=True,
+)
+
+# Full Management Frame Control payload (beaconControl + airtimeFairness)
+beacon = client.site_wireless.get_beacon_control(site_id="your-site-id")
+```
+
+Setters read the current object, change only the targeted fields, and send the
+merged object back, so unrelated settings (band steering, beacon/DTIM/RTS) are
+preserved and the controller's required-field validation is satisfied. Airtime
+fairness shares the `beacon-control` endpoint with the beacon/DTIM/RTS fields.
+
 ### Devices
 
 `client.devices` is the canonical shared endpoint/action layer for device

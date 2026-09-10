@@ -1343,3 +1343,54 @@ against live behavior, not just the spec text.
   table only covers what's been observed (up to 10G).
 - New non-breaking field additions -> version bump (1.5.1 -> 1.6.0).
 
+## Decision 42 (2026-09): `SiteWirelessResource` for mesh and airtime-fairness site settings
+
+### Context
+
+Site-level wireless features (the controller's Site Settings → Wireless panels)
+had no wrapper. Two were needed: the mesh master enable and the per-band airtime
+fairness toggle. Both endpoints exist in the OpenAPI spec but were unwrapped:
+
+- `GET`/`PATCH /openapi/v1/{omadacId}/sites/{siteId}/mesh` — a `mesh` block
+  (`meshEnable` plus `autoFailoverEnable`/`defGatewayEnable`/`fullSector`/`gateway`).
+- `GET`/`PATCH /openapi/v1/{omadacId}/sites/{siteId}/beacon-control` — the
+  Management Frame Control payload, carrying **both** a `beaconControl` block
+  (per-band beacon/DTIM/RTS/probe fields) and an `airtimeFairness` block
+  (`enable2g`/`enable5g`/`enable6g`). Airtime fairness has no endpoint of its own;
+  it shares `beacon-control`.
+
+Both PATCH endpoints validate required fields against the whole block
+(`airtimeFairness` requires all three enable flags; `beaconControl` requires per-band
+`dtimPeriod`/`rtsThreshold`), so a partial body is rejected.
+
+### Decision
+
+Add `SiteWirelessResource` as `client.site_wireless` with:
+
+- `get_mesh(*, site_id)` / `set_mesh(*, site_id, enabled)`
+- `get_beacon_control(*, site_id)` — full Management Frame Control payload
+- `get_airtime_fairness(*, site_id)` — the `airtimeFairness` block
+- `set_airtime_fairness(*, site_id, enable_2g, enable_5g, enable_6g)`
+
+Setters are read-modify-write: they GET the current object, mutate only the
+targeted fields, and PATCH the merged object back. This satisfies the whole-block
+required-field validation and preserves unrelated settings (band steering, beacon
+timing) that share the payload — the same GET-then-merge approach as the SSID
+basic-config decision.
+
+### Alternatives considered
+
+1. Send a minimal PATCH body with only the changed keys — rejected: the controller
+   validates required fields across the whole block, so a partial `beacon-control`
+   body fails and a partial `mesh` body risks clobbering the other flags.
+2. Fold these into `SiteServicesResource` — rejected: that resource covers `/setting/service/*`
+   (SNMP, etc.); mesh and beacon-control are distinct site-wireless surfaces.
+
+### Consequences
+
+- Airtime fairness is set through `set_airtime_fairness`, not a
+  `beacon-control`-named method, so the shared endpoint is not surprising to callers.
+- Enabling airtime fairness "across all bands" is `enable_2g=enable_5g=enable_6g=True`;
+  per-band values are supported by passing them individually.
+- New non-breaking resource addition -> version bump (1.6.0 -> 1.7.0).
+

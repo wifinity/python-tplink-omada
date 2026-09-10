@@ -27,6 +27,7 @@ from .resources import (
     RadiusProfilesResource,
     SiteServicesResource,
     SitesResource,
+    SiteWirelessResource,
     SwitchDot1xResource,
     SwitchesResource,
     WiFiNetworksResource,
@@ -74,6 +75,7 @@ class OmadaClient:
 
         self.sites = SitesResource(self)
         self.site_services = SiteServicesResource(self)
+        self.site_wireless = SiteWirelessResource(self)
         self.devices = DevicesResource(self)
         self.aps = APsResource(self)
         self.switches = SwitchesResource(self)
