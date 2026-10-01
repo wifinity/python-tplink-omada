@@ -22,6 +22,7 @@ _CREATE_SSID_ALLOWED_KEYS: frozenset[str] = frozenset(
         "prohibitWifiShare",
         "pskSetting",
         "security",
+        "ssidEnable",
         "vlanEnable",
         "vlanId",
         "vlanSetting",
@@ -187,7 +188,7 @@ def ssid_detail_to_basic_config_patch(
 
     ``enable11r`` and ``pmfMode`` are required on the PATCH but omitted by some controllers on the SSID
     GET, so when neither *detail* nor *overrides* supplies them they are defaulted (``enable11r=False``;
-    ``pmfMode`` per the SSID security type). Consequently an update that does not set them explicitly
+    ``pmfMode`` per the SSID security type; a ``None`` value counts as omitted). Consequently an update that does not set them explicitly
     **resets** them to those defaults — the controller does not disclose their current values.
 
     Raises:
@@ -202,10 +203,15 @@ def ssid_detail_to_basic_config_patch(
                 raise ValueError(f"Unknown override key for basic config: {key}")
             out[key] = value
     # Fill the controller-omitted-but-required fields so read-modify-write can round-trip.
-    if "enable11r" not in out:
+    if out.get("enable11r") is None:
         out["enable11r"] = False
-    if "pmfMode" not in out:
+    if out.get("pmfMode") is None:
         out["pmfMode"] = _DEFAULT_PMF_MODE_BY_SECURITY.get(out.get("security"), 2)
+    # The GET echoes ``customConfig: {}`` for an SSID without a VLAN, but the PATCH rejects any
+    # ``customConfig`` while ``mode`` is 0 (errorCode -1001).
+    vlan_setting = out.get("vlanSetting")
+    if isinstance(vlan_setting, dict) and vlan_setting.get("mode") == 0:
+        out["vlanSetting"] = {"mode": 0}
     missing = sorted(k for k in _UPDATE_BASIC_CONFIG_REQUIRED_KEYS if k not in out)
     if missing:
         raise ValueError(

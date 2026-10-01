@@ -1394,3 +1394,77 @@ basic-config decision.
   per-band values are supported by passing them individually.
 - New non-breaking resource addition -> version bump (1.6.0 -> 1.7.0).
 
+
+## Decision 43 (2026-10): AP groups and site SSIDs replace WLAN groups (2.0.0, controller 6.3+)
+
+### Context
+
+Controller 6.3 marks every WLAN-group endpoint and every WLAN-nested SSID endpoint
+deprecated. The 6.3 spec describes "WLAN Group" as the legacy name of "AP Group" and
+`wlanId` as the legacy name of `apGroupId`. SSIDs become site-wide objects bound to
+one or more AP groups through `apGroupIds`, instead of living under one WLAN group.
+The replacement endpoints only exist from 6.3:
+
+- AP groups: `GET`/`POST /sites/{siteId}/ap-groups`, `GET /ap-groups/{id}/info`,
+  `PATCH`/`DELETE /ap-groups/{id}`.
+- SSIDs: `GET`/`POST /openapi/v2/{omadacId}/sites/{siteId}/wireless-network/ssids`
+  (list, create), `GET`/`DELETE /openapi/v1/.../wireless-network/ssids/{ssidId}`, and
+  per-setting `PATCH .../ssids/{ssidId}/{basic-config|multicast-config|rate-control|rate-limit}`.
+- Binding: `GET`/`PATCH .../ssids/{ssidId}/ap-groups` (`{apGroupIds}` replaces the list).
+
+### Decision
+
+Release 2.0.0 as a clean break that targets controller 6.3+ only. This supersedes
+Decisions 13 and 14 and amends the SSID decisions (18+), whose payload rules still apply.
+
+- Remove `client.wlan_groups`, `WLANGroupsResource` and `WLANGroupNotFoundError`.
+- `client.ap_groups`: `all`, `get`, `create`, `update`, `delete`, `resolve_ids`. Ids
+  come from `id`. `update` always sends `name` because the controller requires it.
+- `client.wifi_networks` drops `wlan_group=` from every method and is site-scoped.
+  `create` takes `ap_groups` (ids or names), resolved to `apGroupIds` with one list
+  call. `get_ap_groups` and `set_ap_groups` read and replace the binding.
+  `assign_to_ap_group` is removed (its path is in no spec). A missing SSID raises
+  `WiFiNetworkNotFoundError`; a duplicate broadcast name on `get(name=...)` raises
+  `ValueError`, and `filter(name=...)` returns every match.
+- `aps.set_wlan_group_by_mac` becomes `aps.set_ap_group_by_mac`. It keeps
+  `PATCH /aps/{mac}/wlan-group` (`modifyApWlanGroup`), which 6.3 does not deprecate.
+  `aps.get_overview_by_mac` adds `result.apGroupName`.
+- No controller-version detection and no legacy path, with one exception:
+  `update_rate_control` (and the `rate_control=` step of `create`) PATCHes the
+  deprecated `.../wlans/{apGroupId}/ssids/{ssidId}/update-rate-control` under the
+  SSID's first bound AP group. On 6.3.0.45 the site route
+  `.../ssids/{ssidId}/rate-control` returns HTTP 500 for every body. Move to the site
+  route once a controller release fixes it.
+- Post-create PATCH step names in `WiFiNetworkPartiallyConfiguredError.failed_step`
+  are `multicast-config`, `rate-control` and `rate-limit`.
+
+| 1.x | 2.0 |
+|-----|-----|
+| `wlan_groups.all(site_id=)` | `ap_groups.all(site_id=)` |
+| `wlan_groups.get(site_id=, id\|name=)` | `ap_groups.get(site_id=, id\|name=)` |
+| `wlan_groups.create(site_id=, name=)` | `ap_groups.create(site_id=, name=, ap_macs=None)` |
+| `wlan_groups.delete(site_id=, id\|name=)` | `ap_groups.delete(site_id=, id\|name=)` |
+| `ap_groups.create(site_id=, group_data=)` | `ap_groups.create(site_id=, name=, ap_macs=None)` |
+| `wifi_networks.<m>(site_id=, wlan_group=, ...)` | `wifi_networks.<m>(site_id=, ...)` |
+| `wifi_networks.create(site_id=, wlan_group=, ...)` | `wifi_networks.create(site_id=, ap_groups=[...], ...)` |
+| `wifi_networks.assign_to_ap_group(...)` | `wifi_networks.set_ap_groups(site_id=, id\|name=, ap_groups=)` |
+| `aps.set_wlan_group_by_mac(..., wlan_group=)` | `aps.set_ap_group_by_mac(..., ap_group=)` |
+| overview `result.wlanGroupName` | overview `result.apGroupName` |
+| `WLANGroupNotFoundError` | `APGroupNotFoundError` |
+| SSID not found `ValueError` | `WiFiNetworkNotFoundError` |
+
+### Alternatives considered
+
+1. Version-aware dispatch on `controllerVer` with both endpoint families — rejected:
+   it keeps the deprecated surface alive and doubles the test matrix. Callers that
+   still run 6.2 stay on 1.x.
+2. Keep `wlan_groups` as a thin alias of `ap_groups` — rejected: the old names suggest
+   the nested-SSID model, which no longer holds.
+
+### Consequences
+
+- 2.0.0 does not work against 6.2 controllers. Consumers re-pin only after their
+  controllers are on 6.3.
+- An SSID that used to exist once per WLAN group can now appear as several same-name
+  site SSIDs; callers deduplicate with `filter(name=...)`.
+- Breaking change -> major version bump (1.6.0 -> 2.0.0).

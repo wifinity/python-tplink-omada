@@ -117,7 +117,7 @@ class APsResource:
         response = cast(
             dict[str, Any], self.client.get(self._path(f"/openapi/v1/sites/{site_id}/aps/{normalized_mac}"))
         )
-        self._augment_overview_wlan_group_name(response=response, site_id=site_id)
+        self._augment_overview_ap_group_name(response=response, site_id=site_id)
         return response
 
     def get_wired_uplink_by_mac(self, *, site_id: str, mac: str) -> dict[str, Any]:
@@ -162,14 +162,19 @@ class APsResource:
             ),
         )
 
-    def set_wlan_group_by_mac(self, *, site_id: str, mac: str, wlan_group: str) -> dict[str, Any]:
+    def set_ap_group_by_mac(self, *, site_id: str, mac: str, ap_group: str) -> dict[str, Any]:
+        """Move an AP into ``ap_group`` (AP group id or name).
+
+        Uses ``modifyApWlanGroup``, which 6.3 keeps under its legacy WLAN-group name; the
+        controller rejects a move to the AP's current group.
+        """
         normalized_mac = normalize_mac(mac)
-        wlan_group_id = self._resolve_wlan_group_id(site_id=site_id, wlan_group=wlan_group)
+        ap_group_id = self._resolve_ap_group_id(site_id=site_id, ap_group=ap_group)
         return cast(
             dict[str, Any],
             self.client.patch(
                 self._path(f"/openapi/v1/sites/{site_id}/aps/{normalized_mac}/wlan-group"),
-                json={"wlanGroupId": wlan_group_id},
+                json={"wlanGroupId": ap_group_id},
             ),
         )
 
@@ -345,32 +350,31 @@ class APsResource:
             payload[meaning_field] = meanings.get(value, f"Unknown {code_field}: {value}")
 
     @staticmethod
-    def _extract_wlan_group_id(result: dict[str, Any]) -> str | None:
-        for key in ("wlanId", "wlan group id", "wlanGroupId"):
+    def _extract_ap_group_id(result: dict[str, Any]) -> str | None:
+        # The 6.3 overview still reports the AP's group under its legacy WLAN-group keys.
+        for key in ("apGroupId", "wlanId", "wlan group id", "wlanGroupId"):
             value = result.get(key)
             if isinstance(value, str) and value:
                 return value
         return None
 
-    def _augment_overview_wlan_group_name(self, *, response: dict[str, Any], site_id: str) -> None:
+    def _augment_overview_ap_group_name(self, *, response: dict[str, Any], site_id: str) -> None:
         result = response.get("result")
         if not isinstance(result, dict):
             return
-        wlan_group_id = self._extract_wlan_group_id(result)
-        if wlan_group_id is None:
+        ap_group_id = self._extract_ap_group_id(result)
+        if ap_group_id is None:
             return
-        group_name = self._lookup_wlan_group_name(site_id=site_id, wlan_group_id=wlan_group_id)
+        group_name = self._lookup_ap_group_name(site_id=site_id, ap_group_id=ap_group_id)
         if group_name is not None:
-            result["wlanGroupName"] = group_name
+            result["apGroupName"] = group_name
 
-    def _lookup_wlan_group_name(self, *, site_id: str, wlan_group_id: str) -> str | None:
-        if not hasattr(self.client, "wlan_groups"):
-            return None
-        getter = getattr(self.client.wlan_groups, "get", None)
+    def _lookup_ap_group_name(self, *, site_id: str, ap_group_id: str) -> str | None:
+        getter = getattr(getattr(self.client, "ap_groups", None), "get", None)
         if not callable(getter):
             return None
         try:
-            group = cast(dict[str, Any], getter(site_id=site_id, id=wlan_group_id))
+            group = cast(dict[str, Any], getter(site_id=site_id, id=ap_group_id))
         except Exception:
             return None
         name = group.get("name")
@@ -378,26 +382,10 @@ class APsResource:
             return name
         return None
 
-    def _resolve_wlan_group_id(self, *, site_id: str, wlan_group: str) -> str:
-        if not isinstance(wlan_group, str) or not wlan_group:
-            raise ValueError("wlan_group must be a non-empty string")
-        if not hasattr(self.client, "wlan_groups"):
-            raise ValueError("client.wlan_groups is required to resolve wlan_group")
-
-        group_by_id_getter = getattr(self.client.wlan_groups, "get", None)
-        if not callable(group_by_id_getter):
-            raise ValueError("client.wlan_groups.get is required to resolve wlan_group")
-
-        try:
-            by_id = cast(dict[str, Any], group_by_id_getter(site_id=site_id, id=wlan_group))
-        except Exception:
-            by_id = {}
-        wlan_id = self._extract_wlan_group_id(by_id)
-        if wlan_id is not None:
-            return wlan_id
-
-        by_name = cast(dict[str, Any], group_by_id_getter(site_id=site_id, name=wlan_group))
-        wlan_id = self._extract_wlan_group_id(by_name)
-        if wlan_id is None:
-            raise ValueError(f"Matched WLAN group '{wlan_group}' does not include a valid wlanId")
-        return wlan_id
+    def _resolve_ap_group_id(self, *, site_id: str, ap_group: str) -> str:
+        if not isinstance(ap_group, str) or not ap_group:
+            raise ValueError("ap_group must be a non-empty string")
+        resolver = getattr(getattr(self.client, "ap_groups", None), "resolve_ids", None)
+        if not callable(resolver):
+            raise ValueError("client.ap_groups.resolve_ids is required to resolve ap_group")
+        return cast(list[str], resolver(site_id=site_id, ap_groups=[ap_group]))[0]

@@ -2,6 +2,21 @@
 
 A Python client library for the TP-Link Omada SDN controller API.
 
+## Controller version support
+
+The current release is **v2.0.0**, which requires **Omada controller 6.3 or later**.
+It uses the AP-group and site-SSID endpoints introduced in 6.3, which replace the
+deprecated WLAN-group endpoints.
+
+For a **6.2** controller, use the latest 1.x release, **v1.6.0**:
+
+```bash
+uv add "python-tplink-omada @ git+https://github.com/wifinity/python-tplink-omada.git@v1.6.0"
+```
+
+Upgrading from 1.x? See the method mapping in [ADR Decision 43](docs/adr.md) and the
+verified versions in [COMPATIBILITY.md](COMPATIBILITY.md).
+
 ## Features
 
 - **Client-Credentials Authentication**: Handles token acquisition via Omada local-controller OAuth flow.
@@ -11,6 +26,12 @@ A Python client library for the TP-Link Omada SDN controller API.
 - **Internal Generated Models**: Keeps generated schema models internal to preserve a stable public API.
 
 ## Installation
+
+```bash
+uv add "python-tplink-omada @ git+https://github.com/wifinity/python-tplink-omada.git@v2.0.0"
+```
+
+For development in this repository:
 
 ```bash
 uv venv
@@ -212,17 +233,17 @@ ap_device = client.aps.get_by_mac(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF
 ap_device_by_name = client.aps.get_by_name(site_id="your-site-id", name="Lobby-AP-01")
 ap_device_by_serial = client.aps.get_by_serial(site_id="your-site-id", serial="your-device-serial")
 
-# AP overview payload by MAC (adds result.wlanGroupName when wlanId resolves)
+# AP overview payload by MAC (adds result.apGroupName when the AP's group id resolves)
 ap_overview = client.aps.get_overview_by_mac(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
 
 # Wired uplink detail by MAC (adds decoded *Meaning fields)
 ap_wired_uplink = client.aps.get_wired_uplink_by_mac(site_id="your-site-id", mac="AA-BB-CC-DD-EE-FF")
 
-# Switch an AP to a target WLAN group (by group id or exact name)
-switch_result = client.aps.set_wlan_group_by_mac(
+# Move an AP into a target AP group (by group id or exact name)
+switch_result = client.aps.set_ap_group_by_mac(
     site_id="your-site-id",
     mac="AA-BB-CC-DD-EE-FF",
-    wlan_group="Corp",
+    ap_group="Corp",
 )
 
 # --- AP ethernet ports (daisy-chain support) ---
@@ -264,9 +285,8 @@ collisions are possible). `get_by_serial` matches on the `sn` field and always
 scans the full AP-filtered device list client-side, since `sn` is not a
 supported `searchKey` field on the Omada API.
 `get_overview_by_mac` uses the dedicated AP overview endpoint (a different result
-shape) and adds `result.wlanGroupName` when a `wlanId` (or legacy WLAN group id)
-is present and resolvable via `wlan_groups.get` — the id lookup scans the WLAN
-group list, as there is no per-group GET by id. `get_wired_uplink_by_mac`
+shape) and adds `result.apGroupName` when the overview's group id (reported under
+the legacy `wlanId` / `wlan group id` keys) resolves via `ap_groups.get`. `get_wired_uplink_by_mac`
 preserves raw numeric fields and adds `portTypeMeaning`, `linkStatusMeaning`,
 `linkSpeedMeaning`, and `duplexMeaning` (unknown codes map to deterministic
 fallbacks like `Unknown linkSpeed: <code>`). `start_adopt`/`check_adopt` are thin
@@ -285,15 +305,25 @@ here — that is the caller's responsibility.
 
 ### AP Groups
 
-`client.ap_groups` creates AP groups in a site. The `group_data` body is passed
-through to the Omada API unchanged.
+`client.ap_groups` manages AP groups in a site (controller 6.3+; "WLAN group" is
+the legacy name of the same object). An AP group is the set of APs that broadcast
+the SSIDs bound to it; SSIDs are bound from the SSID side
+(`wifi_networks.set_ap_groups`).
 
 ```python
-created_group = client.ap_groups.create(
-    site_id="your-site-id",
-    group_data={"name": "Lobby APs"},
-)
+groups = client.ap_groups.all(site_id="your-site-id")
+created = client.ap_groups.create(site_id="your-site-id", name="Lobby APs", ap_macs=["AA-BB-CC-DD-EE-FF"])
+group_id = created["result"]["id"]
+group = client.ap_groups.get(site_id="your-site-id", name="Lobby APs")
+client.ap_groups.update(site_id="your-site-id", id=group_id, new_name="Lobby", remove_ap_macs=["AA-BB-CC-DD-EE-FF"])
+client.ap_groups.delete(site_id="your-site-id", name="Lobby")
+ids = client.ap_groups.resolve_ids(site_id="your-site-id", ap_groups=["Lobby", "other-group-id"])
 ```
+
+`get`, `update` and `delete` require exactly one selector (`id` or `name`).
+Name lookups use exact matching and raise `APGroupNotFoundError` when missing and
+`ValueError` when ambiguous. `update` always sends `name` (the controller requires
+it), using the current name unless `new_name` is given.
 
 ### Switches
 
@@ -445,58 +475,47 @@ for sw in client.switch_dot1x.candidates(site_id="your-site-id"):
 A port must appear in **only one** of `dot1xPorts`/`mabPorts` — the "Both" mode
 (`authType 3`) is rejected by the Open API.
 
-### Wireless Network Groups
-
-`client.wlan_groups` manages WLAN groups within a site.
-
-```python
-wlan_groups = client.wlan_groups.all(site_id="your-site-id")
-created_group = client.wlan_groups.create(site_id="your-site-id", name="Corp")
-wlan_group = client.wlan_groups.get(site_id="your-site-id", name="Corp")
-delete_result = client.wlan_groups.delete(site_id="your-site-id", name="Corp")
-```
-
-`get` and `delete` require exactly one selector (`id` or `name`). Name-based
-operations use exact-name matching and raise `WLANGroupNotFoundError` for missing
-groups and `ValueError` for ambiguous matches. `create` accepts `name` directly
-and defaults `clone=False` unless overridden in `group_data`.
-
 ### Wi-Fi Networks
 
-`client.wifi_networks` manages SSIDs scoped to a site and WLAN group. Omada always
-requires **`site_id`** and **`wlan_group`** (WLAN group id or name); there is no
-controller-wide SSID list.
+`client.wifi_networks` manages site SSIDs (controller 6.3+). An SSID is one
+site-wide object bound to one or more AP groups (`apGroupIds`); it is not nested
+under a group. Methods take `site_id` plus an SSID `id` or exact broadcast `name`.
 
 ```python
 from omada_client import strip_ssid_detail_for_create
 
 site_id = "your-site-id"
-wlan_group = "Corp"
 
 # List, get (by id or exact broadcast name), and client-side filter
-wifi_networks = client.wifi_networks.all(site_id=site_id, wlan_group=wlan_group)
-wifi_network = client.wifi_networks.get(site_id=site_id, wlan_group=wlan_group, name="GuestSSID")
-filtered = client.wifi_networks.filter(site_id=site_id, wlan_group=wlan_group, ssid="Guest")  # `ssid` aliases `name`
+wifi_networks = client.wifi_networks.all(site_id=site_id)
+wifi_network = client.wifi_networks.get(site_id=site_id, name="GuestSSID")
+filtered = client.wifi_networks.filter(site_id=site_id, ssid="Guest")  # `ssid` aliases `name`
 
 # Create (see security types and further examples below)
 created = client.wifi_networks.create(
-    site_id=site_id, wlan_group=wlan_group, type="psk", name="GuestSSID", psk="StrongPassphrase123!",
+    site_id=site_id, ap_groups=["Corp", "Guest APs"], type="psk", name="GuestSSID", psk="StrongPassphrase123!",
 )
 
-# Update basic SSID fields (PATCHes .../update-basic-config; Omada has no PUT .../ssids/{id})
+# Update basic SSID fields (PATCHes .../ssids/{id}/basic-config; Omada has no PUT .../ssids/{id})
 client.wifi_networks.update_basic_config(
-    site_id=site_id, wlan_group=wlan_group, id="existing-ssid-id",
+    site_id=site_id, id="existing-ssid-id",
     network_data={"ssid": "UpdatedSSID"},  # `ssid` aliases Omada `name`
 )
 
 # Delete by id or name (Omada has no `deep=` delete flag)
-client.wifi_networks.delete(site_id=site_id, wlan_group=wlan_group, name="UpdatedSSID")
+client.wifi_networks.delete(site_id=site_id, name="UpdatedSSID")
+
+# AP-group binding: read, then replace the whole list (ids or names)
+bound = client.wifi_networks.get_ap_groups(site_id=site_id, id="existing-ssid-id")
+client.wifi_networks.set_ap_groups(site_id=site_id, id="existing-ssid-id", ap_groups=["Corp"])
 ```
 
-`filter` only accepts documented criterion keys (unknown keys raise `ValueError`).
-When criteria are only broadcast-name selectors (`name` and/or matching `ssid`),
-the list call uses `searchKey` for a smaller response, then applies exact equality
-client-side. `update_basic_config` loads the current SSID detail, projects it to
+`filter` only accepts keys of the site SSID list item (unknown keys raise
+`ValueError`) and applies exact equality client-side over every page of the list.
+Because several SSIDs on a site can share a broadcast name, `get(name=...)` raises
+`ValueError` on duplicates (`WiFiNetworkNotFoundError` when missing); use
+`filter(name=...)` to see all of them. Ids are read from `id` before the
+deprecated `ssidId`. `update_basic_config` loads the current SSID detail, projects it to
 `UpdateSsidBasicConfigOpenApiVO`, merges overrides, and PATCHes (use the package
 helper `ssid_detail_to_basic_config_patch` if you build PATCH bodies yourself);
 other PATCH routes (rate limit, schedule, …) are not covered by this method.
@@ -528,7 +547,7 @@ from omada_client import strip_ssid_detail_for_create
 # WPA-Personal (security=3) — shared passphrase
 created_wifi_network = client.wifi_networks.create(
     site_id="your-site-id",
-    wlan_group="Corp",
+    ap_groups=["Corp"],
     type="psk",
     name="GuestSSID",
     psk="StrongPassphrase123!",
@@ -539,7 +558,7 @@ created_wifi_network = client.wifi_networks.create(
 # PPSK with RADIUS (security=5) — profile IDs as parameters (vlan= builds vlanSetting pool shape)
 created_dpsk_network = client.wifi_networks.create(
     site_id="your-site-id",
-    wlan_group="Corp",
+    ap_groups=["Corp"],
     type="dpsk",
     ssid="Resident",
     vlan=999,
@@ -550,7 +569,7 @@ created_dpsk_network = client.wifi_networks.create(
 # PPSK without RADIUS (security=4); pmf_mode defaults to 3 for ppsk_local/dpsk
 created_ppsk_local = client.wifi_networks.create(
     site_id="your-site-id",
-    wlan_group="Corp",
+    ap_groups=["Corp"],
     type="ppsk_local",
     ssid="Corporate",
     vlan=999,
@@ -589,7 +608,7 @@ RATE_CONTROL = {
 # POST then opt-in PATCHes: multicast, rate-control, rate-limit
 created_open_isolated_with_rate = client.wifi_networks.create(
     site_id="your-site-id",
-    wlan_group="Corp",
+    ap_groups=["Corp"],
     type="open-isolated",
     ssid="Guest",
     vlan=98,
@@ -601,7 +620,7 @@ created_open_isolated_with_rate = client.wifi_networks.create(
 # PPSK / DPSK with secured multicast (wpa.json / dpsk_radius.json parity)
 created_ppsk_with_multicast = client.wifi_networks.create(
     site_id="your-site-id",
-    wlan_group="Corp",
+    ap_groups=["Corp"],
     type="ppsk_local",
     ssid="Corporate",
     vlan=999,
@@ -612,7 +631,7 @@ created_ppsk_with_multicast = client.wifi_networks.create(
 # Omada vlanSetting (mutually exclusive with vlan= integer shortcut)
 created_vlan_setting = client.wifi_networks.create(
     site_id="your-site-id",
-    wlan_group="Corp",
+    ap_groups=["Corp"],
     type="open",
     ssid="Signup",
     vlan_setting={
@@ -623,25 +642,25 @@ created_vlan_setting = client.wifi_networks.create(
 
 # Standalone PATCHes on an existing SSID
 client.wifi_networks.update_multicast_config(
-    site_id="your-site-id", wlan_group="Corp", name="Guest", multicast_config=GUEST_MULTICAST,
+    site_id="your-site-id", name="Guest", multicast_config=GUEST_MULTICAST,
 )
 client.wifi_networks.update_rate_control(
-    site_id="your-site-id", wlan_group="Corp", name="Guest", rate_control=RATE_CONTROL,
+    site_id="your-site-id", name="Guest", rate_control=RATE_CONTROL,
 )
 client.wifi_networks.update_rate_limit(
-    site_id="your-site-id", wlan_group="Corp", name="Guest",
+    site_id="your-site-id", name="Guest",
     rate_limit_profile_name="Default",  # exact Omada rate-limit profile name
 )
 
 # Clone from GET detail: strip read-only keys; match `type` to `security` in the trimmed payload
 detail = client.wifi_networks.get(
-    site_id="your-site-id", wlan_group="Corp", id="existing-ssid-id",
+    site_id="your-site-id", id="existing-ssid-id",
 )
 base = strip_ssid_detail_for_create(detail)
 base.pop("name", None)  # broadcast name comes from create(ssid=...)
 client.wifi_networks.create(
     site_id="your-site-id",
-    wlan_group="Corp",
+    ap_groups=["Corp"],
     type="psk",
     ssid="ClonedSSID",
     psk="NewPassphrase",

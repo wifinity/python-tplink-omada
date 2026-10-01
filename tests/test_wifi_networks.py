@@ -4,7 +4,7 @@ from typing import cast
 
 import pytest
 
-from omada_client.exceptions import WiFiNetworkPartiallyConfiguredError
+from omada_client.exceptions import WiFiNetworkNotFoundError, WiFiNetworkPartiallyConfiguredError
 from omada_client.resources.wifi_networks import WiFiNetworksResource
 from omada_client.wifi_payload_utils import ssid_detail_to_basic_config_patch, strip_ssid_detail_for_create
 
@@ -20,7 +20,7 @@ class DummyClient:
         self.post_response = {"ok": True}
         self.patch_response = {"ok": True}
         self.delete_response = {"ok": True}
-        self.wlan_groups = DummyWLANGroups()
+        self.ap_groups = DummyAPGroups()
 
     def get(self, path: str, params=None):
         self.get_calls.append((path, params))
@@ -41,30 +41,24 @@ class DummyClient:
         return self.delete_response
 
 
-class DummyWLANGroups:
+class DummyAPGroups:
     def __init__(self) -> None:
-        self.calls: list[tuple[str, str, str]] = []
-        self.by_id: dict[str, dict[str, str]] = {}
-        self.by_name: dict[str, dict[str, str]] = {}
+        self.calls: list[tuple[str, list[str]]] = []
+        self.groups: list[dict[str, str]] = []
 
-    def get(self, *, site_id: str, id: str | None = None, name: str | None = None):
-        if (id is None) == (name is None):
-            raise ValueError("Provide exactly one of 'id' or 'name'")
-        if id is not None:
-            self.calls.append(("id", site_id, id))
-            if id in self.by_id:
-                return self.by_id[id]
-            raise ValueError(f"id '{id}' not found")
-        self.calls.append(("name", site_id, cast(str, name)))
-        if name in self.by_name:
-            return self.by_name[cast(str, name)]
-        raise ValueError(f"name '{name}' not found")
+    def resolve_ids(self, *, site_id: str, ap_groups: list[str]) -> list[str]:
+        self.calls.append((site_id, list(ap_groups)))
+        resolved = []
+        for entry in ap_groups:
+            match = next((g for g in self.groups if entry in (g["id"], g["name"])), None)
+            if match is None:
+                raise ValueError(f"AP group '{entry}' not found")
+            resolved.append(match["id"])
+        return resolved
 
 
-def _wire_wlan_group(client: DummyClient, *, group_id: str, group_name: str) -> None:
-    group = {"wlanId": group_id, "name": group_name}
-    client.wlan_groups.by_id[group_id] = group
-    client.wlan_groups.by_name[group_name] = group
+def _wire_ap_group(client: DummyClient, *, group_id: str, group_name: str) -> None:
+    client.ap_groups.groups.append({"id": group_id, "name": group_name})
 
 
 def _rate_limit_profiles_response(*, profile_id: str = "p-default", name: str = "Default") -> dict[str, object]:
@@ -170,117 +164,163 @@ _SECURED_MULTICAST: dict[str, object] = {
 }
 
 
-def test_wifi_all_uses_group_id_directly() -> None:
+def test_wifi_all_lists_site_ssids_via_v2() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
-    client.get_response = {"result": {"data": [{"ssidId": "s1", "name": "Guest"}]}}
+    client.get_response = {"result": {"data": [{"id": "s1", "name": "Guest"}], "totalRows": 1}}
     resource = WiFiNetworksResource(client)
 
-    result = resource.all(site_id="s1", wlan_group="w1")
+    result = resource.all(site_id="s1")
 
-    assert result == [{"ssidId": "s1", "name": "Guest"}]
-    assert client.wlan_groups.calls[0] == ("id", "s1", "w1")
-    assert client.get_calls[0] == (
-        "/openapi/v1/sites/s1/wireless-network/wlans/w1/ssids",
-        {"page": 1, "pageSize": 1000},
-    )
+    assert result == [{"id": "s1", "name": "Guest"}]
+    assert client.get_calls == [("/openapi/v2/sites/s1/wireless-network/ssids", {"page": 1, "pageSize": 100})]
 
 
-def test_wifi_all_resolves_group_name_when_id_lookup_fails() -> None:
+def test_wifi_all_follows_pages_until_total_rows() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
-    client.get_response = {"result": {"data": [{"ssidId": "s1", "name": "Guest"}]}}
-    resource = WiFiNetworksResource(client)
-
-    result = resource.all(site_id="s1", wlan_group="Corp")
-
-    assert result == [{"ssidId": "s1", "name": "Guest"}]
-    assert client.wlan_groups.calls[0] == ("id", "s1", "Corp")
-    assert client.wlan_groups.calls[1] == ("name", "s1", "Corp")
-    assert client.get_calls[0] == (
-        "/openapi/v1/sites/s1/wireless-network/wlans/w1/ssids",
-        {"page": 1, "pageSize": 1000},
-    )
-
-
-def test_wifi_get_by_name_fetches_detail_by_ssid_id() -> None:
-    client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    first = [{"id": f"s{i}", "name": f"N{i}"} for i in range(100)]
     client.get_responses = [
-        {"result": {"data": [{"ssidId": "s99", "name": "Guest"}]}},
-        {"result": {"ssidId": "s99", "name": "Guest", "security": 0}},
+        {"result": {"data": first, "totalRows": 101}},
+        {"result": {"data": [{"id": "last", "name": "Last"}], "totalRows": 101}},
     ]
     resource = WiFiNetworksResource(client)
 
-    result = resource.get(site_id="s1", wlan_group="Corp", name="Guest")
+    result = resource.all(site_id="s1")
 
-    assert result == {"ssidId": "s99", "name": "Guest", "security": 0}
-    assert client.get_calls[0] == (
-        "/openapi/v1/sites/s1/wireless-network/wlans/w1/ssids",
-        {"page": 1, "pageSize": 1000, "searchKey": "Guest"},
-    )
-    assert client.get_calls[1] == (
-        "/openapi/v1/sites/s1/wireless-network/wlans/w1/ssids/s99",
-        None,
-    )
+    assert len(result) == 101
+    assert [call[1] for call in client.get_calls] == [
+        {"page": 1, "pageSize": 100},
+        {"page": 2, "pageSize": 100},
+    ]
 
 
-def test_wifi_get_by_name_uses_resolved_wlan_id_without_re_resolve() -> None:
+def test_wifi_get_by_name_fetches_detail_by_id() -> None:
     client = DummyClient()
-    # Simulate controllers that do not return wlanId in detail-by-id response.
-    client.wlan_groups.by_id["w1"] = {"name": "Corp"}
     client.get_responses = [
-        {"result": {"data": [{"ssidId": "s99", "name": "Guest"}]}},
-        {"result": {"ssidId": "s99", "name": "Guest", "security": 0}},
+        {"result": {"data": [{"id": "s99", "ssidId": "legacy", "name": "Guest"}]}},
+        {"result": {"id": "s99", "name": "Guest", "security": 0, "apGroupIds": ["g1"]}},
     ]
     resource = WiFiNetworksResource(client)
 
-    result = resource.get(site_id="s1", wlan_group="w1", name="Guest")
+    result = resource.get(site_id="s1", name="Guest")
 
-    assert result == {"ssidId": "s99", "name": "Guest", "security": 0}
-    assert client.wlan_groups.calls == [("id", "s1", "w1"), ("id", "s1", "w1")]
-    assert client.get_calls[0] == (
-        "/openapi/v1/sites/s1/wireless-network/wlans/w1/ssids",
-        {"page": 1, "pageSize": 1000, "searchKey": "Guest"},
-    )
+    assert result == {"id": "s99", "name": "Guest", "security": 0, "apGroupIds": ["g1"]}
+    assert client.get_calls[0] == ("/openapi/v2/sites/s1/wireless-network/ssids", {"page": 1, "pageSize": 100})
+    assert client.get_calls[1] == ("/openapi/v1/sites/s1/wireless-network/ssids/s99", None)
+
+
+def test_wifi_get_by_id_skips_list() -> None:
+    client = DummyClient()
+    client.get_response = {"result": {"id": "s99", "name": "Guest"}}
+    resource = WiFiNetworksResource(client)
+
+    resource.get(site_id="s1", id="s99")
+
+    assert client.get_calls == [("/openapi/v1/sites/s1/wireless-network/ssids/s99", None)]
+
+
+def test_wifi_get_by_name_missing_raises_not_found() -> None:
+    client = DummyClient()
+    client.get_response = {"result": {"data": [{"id": "s1", "name": "Other"}]}}
+    resource = WiFiNetworksResource(client)
+
+    with pytest.raises(WiFiNetworkNotFoundError, match="'Guest' was not found"):
+        resource.get(site_id="s1", name="Guest")
+
+
+def test_wifi_get_by_name_duplicate_raises_value_error() -> None:
+    client = DummyClient()
+    client.get_response = {"result": {"data": [{"id": "a", "name": "Guest"}, {"id": "b", "name": "Guest"}]}}
+    resource = WiFiNetworksResource(client)
+
+    with pytest.raises(ValueError, match="Multiple Wi-Fi networks found with name 'Guest'"):
+        resource.get(site_id="s1", name="Guest")
+
+
+def test_wifi_filter_by_name_returns_duplicates() -> None:
+    client = DummyClient()
+    client.get_response = {
+        "result": {"data": [{"id": "a", "name": "Guest"}, {"id": "b", "name": "Guest"}, {"id": "c", "name": "X"}]}
+    }
+    resource = WiFiNetworksResource(client)
+
+    assert [item["id"] for item in resource.filter(site_id="s1", ssid="Guest")] == ["a", "b"]
+
+
+def test_wifi_filter_rejects_unknown_criteria() -> None:
+    resource = WiFiNetworksResource(DummyClient())
+
+    with pytest.raises(ValueError, match="Unsupported filter criteria: pskSetting"):
+        resource.filter(site_id="s1", pskSetting={})
+
+
+def test_wifi_get_ap_groups_returns_bound_groups() -> None:
+    client = DummyClient()
+    client.get_response = {"result": {"apGroups": [{"id": "g1", "name": "Corp"}], "maxSsids2G": 8}}
+    resource = WiFiNetworksResource(client)
+
+    groups = resource.get_ap_groups(site_id="s1", id="s9")
+
+    assert groups == [{"id": "g1", "name": "Corp"}]
+    assert client.get_calls == [("/openapi/v1/sites/s1/wireless-network/ssids/s9/ap-groups", None)]
+
+
+def test_wifi_set_ap_groups_resolves_names_and_replaces_binding() -> None:
+    client = DummyClient()
+    _wire_ap_group(client, group_id="g1", group_name="Corp")
+    _wire_ap_group(client, group_id="g2", group_name="Guest APs")
+    resource = WiFiNetworksResource(client)
+
+    resource.set_ap_groups(site_id="s1", id="s9", ap_groups=["Corp", "g2"])
+
+    assert client.ap_groups.calls == [("s1", ["Corp", "g2"])]
+    assert client.patch_calls == [
+        ("/openapi/v1/sites/s1/wireless-network/ssids/s9/ap-groups", {"apGroupIds": ["g1", "g2"]})
+    ]
+
+
+def test_wifi_extract_ssid_id_prefers_id_over_legacy_ssid_id() -> None:
+    assert WiFiNetworksResource._extract_ssid_id({"ssidId": "legacy", "id": "new"}) == "new"
+    assert WiFiNetworksResource._extract_ssid_id({"ssidId": "legacy"}) == "legacy"
 
 
 def test_wifi_get_requires_exactly_one_selector() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     resource = WiFiNetworksResource(client)
 
     with pytest.raises(ValueError, match="Provide exactly one of 'id' or 'name'"):
-        resource.get(site_id="s1", wlan_group="w1")
+        resource.get(
+            site_id="s1",
+        )
 
     with pytest.raises(ValueError, match="Provide exactly one of 'id' or 'name'"):
-        resource.get(site_id="s1", wlan_group="w1", id="x", name="Guest")
+        resource.get(site_id="s1", id="x", name="Guest")
 
 
 def test_wifi_delete_by_name_resolves_ssid_id() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     client.get_response = {"result": {"data": [{"ssidId": "s5", "name": "Guest"}]}}
     resource = WiFiNetworksResource(client)
 
-    result = resource.delete(site_id="s1", wlan_group="w1", name="Guest")
+    result = resource.delete(site_id="s1", name="Guest")
 
     assert result == {"ok": True}
     assert client.delete_calls[0] == (
-        "/openapi/v1/sites/s1/wireless-network/wlans/w1/ssids/s5",
+        "/openapi/v1/sites/s1/wireless-network/ssids/s5",
         None,
     )
 
 
 def test_wifi_create_psk_builds_payload_and_overrides() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     _wire_post_create(client)
     resource = WiFiNetworksResource(client)
 
     resource.create(
         site_id="s1",
-        wlan_group="Corp",
+        ap_groups=["Corp"],
         type="psk",
         ssid="GuestSSID",
         psk="initial-pass",
@@ -288,7 +328,7 @@ def test_wifi_create_psk_builds_payload_and_overrides() -> None:
         pmfMode=3,
     )
 
-    assert client.post_calls[0][0] == "/openapi/v1/sites/s1/wireless-network/wlans/w1/ssids"
+    assert client.post_calls[0][0] == "/openapi/v2/sites/s1/wireless-network/ssids"
     sent = cast(dict[str, object], client.post_calls[0][1])
     assert sent["security"] == 3
     assert sent["name"] == "GuestSSID"
@@ -302,15 +342,47 @@ def test_wifi_create_psk_builds_payload_and_overrides() -> None:
     assert "ppskSetting" not in sent
 
 
+def test_wifi_create_binds_resolved_ap_group_ids() -> None:
+    client = DummyClient()
+    _wire_ap_group(client, group_id="g1", group_name="Corp")
+    _wire_ap_group(client, group_id="g2", group_name="Guest APs")
+    resource = WiFiNetworksResource(client)
+
+    resource.create(site_id="s1", ap_groups=["Corp", "g2"], type="open", ssid="Guest")
+
+    assert client.ap_groups.calls == [("s1", ["Corp", "g2"])]
+    sent = cast(dict[str, object], client.post_calls[0][1])
+    assert sent["apGroupIds"] == ["g1", "g2"]
+
+
+def test_wifi_create_unknown_ap_group_fails_before_post() -> None:
+    client = DummyClient()
+    resource = WiFiNetworksResource(client)
+
+    with pytest.raises(ValueError, match="AP group 'Missing' not found"):
+        resource.create(site_id="s1", ap_groups=["Missing"], type="open", ssid="Guest")
+    assert client.post_calls == []
+
+
+def test_wifi_create_rejects_ap_group_ids_in_network_data() -> None:
+    client = DummyClient()
+    _wire_ap_group(client, group_id="g1", group_name="Corp")
+    resource = WiFiNetworksResource(client)
+
+    with pytest.raises(ValueError, match="must not include 'apGroupIds'"):
+        resource.create(site_id="s1", ap_groups=["g1"], type="open", ssid="Guest", network_data={"apGroupIds": ["x"]})
+    assert client.post_calls == []
+
+
 def test_wifi_create_psk_rejects_ppsk_profile_name() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     resource = WiFiNetworksResource(client)
 
     with pytest.raises(ValueError, match="ppsk_profile_name is only valid for type='ppsk_local'"):
         resource.create(
             site_id="s1",
-            wlan_group="w1",
+            ap_groups=["w1"],
             type="psk",
             ssid="WPA",
             psk="secret",
@@ -320,22 +392,22 @@ def test_wifi_create_psk_rejects_ppsk_profile_name() -> None:
 
 def test_wifi_create_open_rejects_psk_kwarg() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     resource = WiFiNetworksResource(client)
 
     with pytest.raises(ValueError, match="psk is only valid for type='psk'"):
-        resource.create(site_id="s1", wlan_group="w1", type="open-isolated", ssid="G", psk="x")
+        resource.create(site_id="s1", ap_groups=["w1"], type="open-isolated", ssid="G", psk="x")
 
 
 def test_wifi_create_psk_rejects_ppsk_setting() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     resource = WiFiNetworksResource(client)
 
     with pytest.raises(ValueError, match="ppsk_setting is only valid"):
         resource.create(
             site_id="s1",
-            wlan_group="w1",
+            ap_groups=["w1"],
             type="psk",
             ssid="WPA",
             psk="secret",
@@ -345,13 +417,13 @@ def test_wifi_create_psk_rejects_ppsk_setting() -> None:
 
 def test_wifi_create_ppsk_local_hyphen_alias() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     _wire_ppsk_local_create(client)
     resource = WiFiNetworksResource(client)
 
     resource.create(
         site_id="s1",
-        wlan_group="w1",
+        ap_groups=["w1"],
         type="ppsk-local",
         ssid="Corporate",
         vlan=999,
@@ -364,13 +436,13 @@ def test_wifi_create_ppsk_local_hyphen_alias() -> None:
 
 def test_wifi_create_dpsk_maps_to_security_five() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     _wire_post_create(client)
     resource = WiFiNetworksResource(client)
 
     resource.create(
         site_id="s1",
-        wlan_group="w1",
+        ap_groups=["w1"],
         type="dpsk",
         ssid="GuestSSID",
         ppsk_setting={"radiusProfileId": "r1"},
@@ -383,13 +455,13 @@ def test_wifi_create_dpsk_maps_to_security_five() -> None:
 
 def test_wifi_create_maps_vlan_shortcut_to_vlan_pool_setting() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     _wire_post_create(client)
     resource = WiFiNetworksResource(client)
 
     resource.create(
         site_id="s1",
-        wlan_group="w1",
+        ap_groups=["w1"],
         type="open",
         ssid="GuestSSID",
         vlan=99,
@@ -407,7 +479,7 @@ def test_wifi_create_maps_vlan_shortcut_to_vlan_pool_setting() -> None:
 
 def test_wifi_create_vlan_setting_omits_vlan_id() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     _wire_post_create(client)
     resource = WiFiNetworksResource(client)
 
@@ -417,7 +489,7 @@ def test_wifi_create_vlan_setting_omits_vlan_id() -> None:
     }
     resource.create(
         site_id="s1",
-        wlan_group="w1",
+        ap_groups=["w1"],
         type="open",
         ssid="Guest",
         vlan_setting=vs,
@@ -431,13 +503,13 @@ def test_wifi_create_vlan_setting_omits_vlan_id() -> None:
 
 def test_wifi_create_rejects_vlan_and_vlan_setting_together() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     resource = WiFiNetworksResource(client)
 
     with pytest.raises(ValueError, match="vlan integer shortcut or vlan_setting"):
         resource.create(
             site_id="s1",
-            wlan_group="w1",
+            ap_groups=["w1"],
             type="open",
             ssid="Guest",
             vlan=10,
@@ -447,13 +519,13 @@ def test_wifi_create_rejects_vlan_and_vlan_setting_together() -> None:
 
 def test_wifi_create_rejects_invalid_vlan_shortcut() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     resource = WiFiNetworksResource(client)
 
     with pytest.raises(ValueError, match="vlan must be an integer in range 1..4094"):
         resource.create(
             site_id="s1",
-            wlan_group="w1",
+            ap_groups=["w1"],
             type="open",
             ssid="GuestSSID",
             vlan=0,
@@ -462,11 +534,11 @@ def test_wifi_create_rejects_invalid_vlan_shortcut() -> None:
 
 def test_wifi_create_open_isolated_type_sets_guest_net() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     _wire_post_create(client)
     resource = WiFiNetworksResource(client)
 
-    resource.create(site_id="s1", wlan_group="w1", type="open-isolated", ssid="G")
+    resource.create(site_id="s1", ap_groups=["w1"], type="open-isolated", ssid="G")
 
     sent = cast(dict[str, object], client.post_calls[0][1])
     assert sent["security"] == 0
@@ -475,20 +547,20 @@ def test_wifi_create_open_isolated_type_sets_guest_net() -> None:
 
 def test_wifi_create_rejects_guest_type() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     resource = WiFiNetworksResource(client)
 
     with pytest.raises(ValueError, match="Invalid Wi-Fi type 'guest'"):
-        resource.create(site_id="s1", wlan_group="w1", type="guest", ssid="G")
+        resource.create(site_id="s1", ap_groups=["w1"], type="guest", ssid="G")
 
 
 def test_wifi_create_open_with_guest_network_flag() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     _wire_post_create(client)
     resource = WiFiNetworksResource(client)
 
-    resource.create(site_id="s1", wlan_group="w1", type="open", ssid="O", guest_network=True)
+    resource.create(site_id="s1", ap_groups=["w1"], type="open", ssid="O", guest_network=True)
 
     sent = cast(dict[str, object], client.post_calls[0][1])
     assert sent["guestNetEnable"] is True
@@ -496,13 +568,13 @@ def test_wifi_create_open_with_guest_network_flag() -> None:
 
 def test_wifi_create_ppsk_local_from_profile_name() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     _wire_ppsk_local_create(client)
     resource = WiFiNetworksResource(client)
 
     resource.create(
         site_id="s1",
-        wlan_group="w1",
+        ap_groups=["w1"],
         type="ppsk_local",
         ssid="Corporate",
         vlan=999,
@@ -526,14 +598,14 @@ def test_wifi_create_ppsk_local_from_profile_name() -> None:
 
 def test_wifi_create_ppsk_local_fails_when_profile_name_missing() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     client.get_response = _ppsk_profiles_response(profile_name="Other-Profile")
     resource = WiFiNetworksResource(client)
 
     with pytest.raises(ValueError, match="No PPSK profile named"):
         resource.create(
             site_id="s1",
-            wlan_group="w1",
+            ap_groups=["w1"],
             type="ppsk_local",
             ssid="Corporate",
             ppsk_profile_name="My_PPSK_Profile",
@@ -542,7 +614,7 @@ def test_wifi_create_ppsk_local_fails_when_profile_name_missing() -> None:
 
 def test_wifi_create_ppsk_local_fails_on_duplicate_profile_name() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     client.get_response = {
         "result": {
             "data": [
@@ -556,7 +628,7 @@ def test_wifi_create_ppsk_local_fails_on_duplicate_profile_name() -> None:
     with pytest.raises(ValueError, match="Multiple PPSK profiles named"):
         resource.create(
             site_id="s1",
-            wlan_group="w1",
+            ap_groups=["w1"],
             type="ppsk_local",
             ssid="Corporate",
             ppsk_profile_name="My_PPSK_Profile",
@@ -604,13 +676,13 @@ def test_wifi_lookup_radius_profile_duplicate_names_raises() -> None:
 
 def test_wifi_create_dpsk_from_radius_profile_name() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     _wire_dpsk_create(client)
     resource = WiFiNetworksResource(client)
 
     resource.create(
         site_id="s1",
-        wlan_group="w1",
+        ap_groups=["w1"],
         type="dpsk",
         ssid="Resident",
         vlan=999,
@@ -630,13 +702,13 @@ def test_wifi_create_dpsk_from_radius_profile_name() -> None:
 
 def test_wifi_create_multicast_config_patches_after_post() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     _wire_post_create(client, ssid_id="s-new")
     resource = WiFiNetworksResource(client)
 
     resource.create(
         site_id="s1",
-        wlan_group="w1",
+        ap_groups=["w1"],
         type="open-isolated",
         ssid="Guest",
         vlan=98,
@@ -646,13 +718,13 @@ def test_wifi_create_multicast_config_patches_after_post() -> None:
     assert len(client.post_calls) == 1
     assert len(client.patch_calls) == 1
     path, body = client.patch_calls[0]
-    assert path.endswith("/wireless-network/wlans/w1/ssids/s-new/update-multicast-config")
+    assert path.endswith("/wireless-network/ssids/s-new/multicast-config")
     assert body == _GUEST_MULTICAST
 
 
 def test_wifi_create_multicast_config_resolves_ssid_by_name_when_post_omits_id() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     client.post_response = {"ok": True}
     client.get_responses = [
         {"result": {"data": [{"ssidId": "s-listed", "name": "Guest"}]}},
@@ -661,24 +733,24 @@ def test_wifi_create_multicast_config_resolves_ssid_by_name_when_post_omits_id()
 
     resource.create(
         site_id="s1",
-        wlan_group="Corp",
+        ap_groups=["Corp"],
         type="open-isolated",
         ssid="Guest",
         multicast_config=_GUEST_MULTICAST,
     )
 
-    assert client.patch_calls[0][0].endswith("/ssids/s-listed/update-multicast-config")
+    assert client.patch_calls[0][0].endswith("/ssids/s-listed/multicast-config")
 
 
 def test_wifi_create_ppsk_local_multicast_config_patches() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     _wire_ppsk_local_create(client, ssid_id="s-new")
     resource = WiFiNetworksResource(client)
 
     resource.create(
         site_id="s1",
-        wlan_group="w1",
+        ap_groups=["w1"],
         type="ppsk_local",
         ssid="Corporate",
         vlan=999,
@@ -688,21 +760,21 @@ def test_wifi_create_ppsk_local_multicast_config_patches() -> None:
 
     assert len(client.patch_calls) == 1
     path, body = client.patch_calls[0]
-    assert path.endswith("/update-multicast-config")
+    assert path.endswith("/multicast-config")
     assert body["arpCastEnable"] is True
     assert body["filterEnable"] is False
 
 
 def test_wifi_create_rejects_nested_multicast_wrapper() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     _wire_post_create(client, ssid_id="s-new")
     resource = WiFiNetworksResource(client)
 
     with pytest.raises(ValueError, match="flat UpdateSsidMultiCastOpenApiVO"):
         resource.create(
             site_id="s1",
-            wlan_group="w1",
+            ap_groups=["w1"],
             type="open-isolated",
             ssid="Guest",
             multicast_config={"multiCast": _GUEST_MULTICAST},
@@ -711,18 +783,17 @@ def test_wifi_create_rejects_nested_multicast_wrapper() -> None:
 
 def test_wifi_update_multicast_config_by_name() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     client.get_response = {"result": {"data": [{"ssidId": "s9", "name": "Guest"}]}}
     resource = WiFiNetworksResource(client)
 
     resource.update_multicast_config(
         site_id="s1",
-        wlan_group="Corp",
         name="Guest",
         multicast_config=_GUEST_MULTICAST,
     )
 
-    assert client.patch_calls[0][0].endswith("/ssids/s9/update-multicast-config")
+    assert client.patch_calls[0][0].endswith("/ssids/s9/multicast-config")
     assert cast(dict[str, object], client.patch_calls[0][1])["filterMode"] == 15
 
 
@@ -736,49 +807,52 @@ _RATE_CONTROL: dict[str, object] = {
 }
 
 
-def test_wifi_update_rate_control_by_id() -> None:
+def test_wifi_update_rate_control_by_id_uses_legacy_route_under_first_bound_group() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    client.get_response = {"result": {"id": "s9", "name": "Guest", "apGroupIds": ["g1", "g2"]}}
     resource = WiFiNetworksResource(client)
 
-    resource.update_rate_control(
-        site_id="s1",
-        wlan_group="w1",
-        id="s9",
-        rate_control=_RATE_CONTROL,
-    )
+    resource.update_rate_control(site_id="s1", id="s9", rate_control=_RATE_CONTROL)
 
-    path, body = client.patch_calls[0]
-    assert path.endswith("/wireless-network/wlans/w1/ssids/s9/update-rate-control")
-    assert body == _RATE_CONTROL
+    assert client.get_calls == [("/openapi/v1/sites/s1/wireless-network/ssids/s9", None)]
+    assert client.patch_calls == [
+        ("/openapi/v1/sites/s1/wireless-network/wlans/g1/ssids/s9/update-rate-control", _RATE_CONTROL)
+    ]
 
 
 def test_wifi_update_rate_control_by_name() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
-    client.get_response = {"result": {"data": [{"ssidId": "s9", "name": "Guest"}]}}
+    client.get_responses = [
+        {"result": {"data": [{"id": "s9", "name": "Guest"}]}},
+        {"result": {"id": "s9", "name": "Guest", "apGroupIds": ["g1"]}},
+    ]
     resource = WiFiNetworksResource(client)
 
-    resource.update_rate_control(
-        site_id="s1",
-        wlan_group="Corp",
-        name="Guest",
-        rate_control=_RATE_CONTROL,
-    )
+    resource.update_rate_control(site_id="s1", name="Guest", rate_control=_RATE_CONTROL)
 
-    assert client.patch_calls[0][0].endswith("/ssids/s9/update-rate-control")
+    assert client.patch_calls[0][0] == "/openapi/v1/sites/s1/wireless-network/wlans/g1/ssids/s9/update-rate-control"
     assert client.patch_calls[0][1] == _RATE_CONTROL
+
+
+def test_wifi_update_rate_control_unbound_ssid_raises() -> None:
+    client = DummyClient()
+    client.get_response = {"result": {"id": "s9", "name": "Guest", "apGroupIds": []}}
+    resource = WiFiNetworksResource(client)
+
+    with pytest.raises(ValueError, match="not bound to an AP group"):
+        resource.update_rate_control(site_id="s1", id="s9", rate_control=_RATE_CONTROL)
+    assert client.patch_calls == []
 
 
 def test_wifi_create_rate_control_patches_after_post() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     _wire_post_create(client, ssid_id="s-new")
     resource = WiFiNetworksResource(client)
 
     resource.create(
         site_id="s1",
-        wlan_group="w1",
+        ap_groups=["w1"],
         type="open-isolated",
         ssid="Guest",
         vlan=98,
@@ -788,19 +862,19 @@ def test_wifi_create_rate_control_patches_after_post() -> None:
     assert len(client.post_calls) == 1
     assert len(client.patch_calls) == 1
     path, body = client.patch_calls[0]
-    assert path.endswith("/wireless-network/wlans/w1/ssids/s-new/update-rate-control")
+    assert path == "/openapi/v1/sites/s1/wireless-network/wlans/w1/ssids/s-new/update-rate-control"
     assert body == _RATE_CONTROL
 
 
 def test_wifi_create_multicast_and_rate_control_patch_order() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     _wire_post_create(client, ssid_id="s-new")
     resource = WiFiNetworksResource(client)
 
     resource.create(
         site_id="s1",
-        wlan_group="w1",
+        ap_groups=["w1"],
         type="open-isolated",
         ssid="Guest",
         vlan=98,
@@ -810,23 +884,23 @@ def test_wifi_create_multicast_and_rate_control_patch_order() -> None:
     )
 
     assert len(client.patch_calls) == 3
-    assert client.patch_calls[0][0].endswith("/update-multicast-config")
-    assert client.patch_calls[1][0].endswith("/update-rate-control")
+    assert client.patch_calls[0][0].endswith("/multicast-config")
+    assert client.patch_calls[1][0].endswith("/wlans/w1/ssids/s-new/update-rate-control")
     assert client.patch_calls[1][1] == _RATE_CONTROL
-    assert client.patch_calls[2][0].endswith("/update-rate-limit")
+    assert client.patch_calls[2][0].endswith("/rate-limit")
     assert client.patch_calls[2][1] == _expected_rate_limit_patch_body()
 
 
 def test_wifi_create_rejects_empty_rate_control() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     _wire_post_create(client, ssid_id="s-new")
     resource = WiFiNetworksResource(client)
 
     with pytest.raises(ValueError, match="non-empty dict"):
         resource.create(
             site_id="s1",
-            wlan_group="w1",
+            ap_groups=["w1"],
             type="open-isolated",
             ssid="Guest",
             rate_control={},
@@ -835,14 +909,14 @@ def test_wifi_create_rejects_empty_rate_control() -> None:
 
 def test_wifi_create_rejects_nested_rate_control_wrapper() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     _wire_post_create(client, ssid_id="s-new")
     resource = WiFiNetworksResource(client)
 
     with pytest.raises(ValueError, match="flat UpdateSsidRateControlOpenApiVO"):
         resource.create(
             site_id="s1",
-            wlan_group="w1",
+            ap_groups=["w1"],
             type="open-isolated",
             ssid="Guest",
             rate_control={"rateControl": _RATE_CONTROL},
@@ -851,13 +925,12 @@ def test_wifi_create_rejects_nested_rate_control_wrapper() -> None:
 
 def test_wifi_update_rate_control_rejects_nested_wrapper() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     resource = WiFiNetworksResource(client)
 
     with pytest.raises(ValueError, match="flat UpdateSsidRateControlOpenApiVO"):
         resource.update_rate_control(
             site_id="s1",
-            wlan_group="w1",
             id="s9",
             rate_control={"rateControl": _RATE_CONTROL},
         )
@@ -898,62 +971,62 @@ def test_wifi_lookup_rate_limit_profile_duplicate_names_raises() -> None:
 
 def test_wifi_update_rate_limit_by_name() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     client.get_responses = [
         _rate_limit_profiles_response(profile_id="p-default"),
         {"result": {"data": [{"ssidId": "s9", "name": "Guest"}]}},
     ]
     resource = WiFiNetworksResource(client)
 
-    resource.update_rate_limit(site_id="s1", wlan_group="Corp", name="Guest", rate_limit_profile_name="Default")
+    resource.update_rate_limit(site_id="s1", name="Guest", rate_limit_profile_name="Default")
 
-    assert client.patch_calls[0][0].endswith("/ssids/s9/update-rate-limit")
+    assert client.patch_calls[0][0].endswith("/ssids/s9/rate-limit")
     assert client.patch_calls[0][1] == _expected_rate_limit_patch_body("p-default")
 
 
 def test_wifi_update_rate_limit_rejects_empty_name() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     resource = WiFiNetworksResource(client)
 
     with pytest.raises(ValueError, match="rate_limit_profile_name must be a non-empty string"):
-        resource.update_rate_limit(site_id="s1", wlan_group="w1", id="s9", rate_limit_profile_name="")
+        resource.update_rate_limit(site_id="s1", id="s9", rate_limit_profile_name="")
 
 
 def test_wifi_create_skips_rate_limit_when_unset() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     _wire_post_create(client, ssid_id="s-new", profile_id="p-default")
     resource = WiFiNetworksResource(client)
 
-    resource.create(site_id="s1", wlan_group="w1", type="open", ssid="Plain")
+    resource.create(site_id="s1", ap_groups=["w1"], type="open", ssid="Plain")
 
     assert not any("/rate-limit-profiles" in c[0] for c in client.get_calls)
-    assert not any(c[0].endswith("/update-rate-limit") for c in client.patch_calls)
+    assert not any(c[0].endswith("/rate-limit") for c in client.patch_calls)
 
 
 def test_wifi_create_applies_rate_limit_profile_by_name() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     _wire_post_create(client, ssid_id="s-new", profile_id="p-default")
     resource = WiFiNetworksResource(client)
 
     resource.create(
         site_id="s1",
-        wlan_group="w1",
+        ap_groups=["w1"],
         type="open",
         ssid="Limited",
         rate_limit_profile_name="Default",
     )
 
     assert any("/rate-limit-profiles" in c[0] for c in client.get_calls)
-    assert client.patch_calls[-1][0].endswith("/update-rate-limit")
+    assert client.patch_calls[-1][0].endswith("/rate-limit")
     assert client.patch_calls[-1][1] == _expected_rate_limit_patch_body("p-default")
 
 
 def test_wifi_create_partial_failure_raises_with_ssid_id() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     client.post_response = {"result": {"ssidId": "s-new"}}
     # multicast PATCH succeeds; rate-limit name lookup finds no profile and fails.
     client.get_response = {"result": {"data": []}}
@@ -962,7 +1035,7 @@ def test_wifi_create_partial_failure_raises_with_ssid_id() -> None:
     with pytest.raises(WiFiNetworkPartiallyConfiguredError) as excinfo:
         resource.create(
             site_id="s1",
-            wlan_group="w1",
+            ap_groups=["w1"],
             type="open-isolated",
             ssid="Guest",
             multicast_config=_GUEST_MULTICAST,
@@ -971,21 +1044,21 @@ def test_wifi_create_partial_failure_raises_with_ssid_id() -> None:
 
     err = excinfo.value
     assert err.ssid_id == "s-new"
-    assert err.failed_step == "update-rate-limit"
-    assert err.completed_steps == ["update-multicast-config"]
+    assert err.failed_step == "rate-limit"
+    assert err.completed_steps == ["multicast-config"]
     assert isinstance(err.__cause__, ValueError)
-    assert client.patch_calls[0][0].endswith("/update-multicast-config")
+    assert client.patch_calls[0][0].endswith("/multicast-config")
 
 
 def test_wifi_create_psk_default_pmf_mode() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     _wire_post_create(client)
     resource = WiFiNetworksResource(client)
 
     resource.create(
         site_id="s1",
-        wlan_group="w1",
+        ap_groups=["w1"],
         type="psk",
         ssid="WPA",
         psk="secret-pass",
@@ -997,11 +1070,11 @@ def test_wifi_create_psk_default_pmf_mode() -> None:
 
 def test_wifi_create_open_isolated_default_pmf_mode() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     _wire_post_create(client)
     resource = WiFiNetworksResource(client)
 
-    resource.create(site_id="s1", wlan_group="w1", type="open-isolated", ssid="Guest", vlan=98)
+    resource.create(site_id="s1", ap_groups=["w1"], type="open-isolated", ssid="Guest", vlan=98)
 
     sent = cast(dict[str, object], client.post_calls[0][1])
     assert sent["pmfMode"] == 2
@@ -1010,13 +1083,13 @@ def test_wifi_create_open_isolated_default_pmf_mode() -> None:
 
 def test_wifi_create_rejects_profile_id_with_ppsk_setting() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     resource = WiFiNetworksResource(client)
 
     with pytest.raises(ValueError, match="ppsk_profile_name or ppsk_setting"):
         resource.create(
             site_id="s1",
-            wlan_group="w1",
+            ap_groups=["w1"],
             type="ppsk_local",
             ssid="A",
             ppsk_profile_name="My_PPSK_Profile",
@@ -1026,13 +1099,13 @@ def test_wifi_create_rejects_profile_id_with_ppsk_setting() -> None:
 
 def test_wifi_create_dpsk_requires_nas_id_with_radius_profile() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     resource = WiFiNetworksResource(client)
 
     with pytest.raises(ValueError, match="requires nas_id"):
         resource.create(
             site_id="s1",
-            wlan_group="w1",
+            ap_groups=["w1"],
             type="dpsk",
             ssid="A",
             radius_profile_name="My RADIUS Profile",
@@ -1041,13 +1114,13 @@ def test_wifi_create_dpsk_requires_nas_id_with_radius_profile() -> None:
 
 def test_wifi_create_ppsk_local_security_four_both_settings() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     _wire_post_create(client)
     resource = WiFiNetworksResource(client)
 
     resource.create(
         site_id="s1",
-        wlan_group="w1",
+        ap_groups=["w1"],
         type="ppsk_local",
         ssid="Corp",
         psk_setting={"versionPsk": 2, "encryptionPsk": 3, "gikRekeyPskEnable": False},
@@ -1062,47 +1135,47 @@ def test_wifi_create_ppsk_local_security_four_both_settings() -> None:
 
 def test_wifi_create_rejects_hotspot20() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     resource = WiFiNetworksResource(client)
 
     with pytest.raises(ValueError, match="hotspot20"):
-        resource.create(site_id="s1", wlan_group="w1", type="hotspot20", ssid="A")
+        resource.create(site_id="s1", ap_groups=["w1"], type="hotspot20", ssid="A")
 
 
 def test_wifi_create_requires_type_specific_settings() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     resource = WiFiNetworksResource(client)
 
     with pytest.raises(ValueError, match="type='psk' requires"):
-        resource.create(site_id="s1", wlan_group="w1", type="psk", ssid="A")
+        resource.create(site_id="s1", ap_groups=["w1"], type="psk", ssid="A")
 
     with pytest.raises(ValueError, match="type='dpsk' requires"):
-        resource.create(site_id="s1", wlan_group="w1", type="dpsk", ssid="A")
+        resource.create(site_id="s1", ap_groups=["w1"], type="dpsk", ssid="A")
 
     with pytest.raises(ValueError, match="type='aaa' requires"):
-        resource.create(site_id="s1", wlan_group="w1", type="aaa", ssid="A")
+        resource.create(site_id="s1", ap_groups=["w1"], type="aaa", ssid="A")
 
     with pytest.raises(ValueError, match="type='ppsk_local' requires psk_setting"):
         resource.create(
             site_id="s1",
-            wlan_group="w1",
+            ap_groups=["w1"],
             type="ppsk_local",
             ssid="A",
             ppsk_setting={"ppskProfileId": "p"},
         )
 
     with pytest.raises(ValueError, match="psk is only valid for type='psk'"):
-        resource.create(site_id="s1", wlan_group="w1", type="ppsk_local", ssid="A", psk="x")
+        resource.create(site_id="s1", ap_groups=["w1"], type="ppsk_local", ssid="A", psk="x")
 
 
 def test_wifi_create_name_only_string_typed() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     _wire_post_create(client)
     resource = WiFiNetworksResource(client)
 
-    resource.create(site_id="s1", wlan_group="w1", type="open", name="OnlyName")
+    resource.create(site_id="s1", ap_groups=["w1"], type="open", name="OnlyName")
 
     sent = cast(dict[str, object], client.post_calls[0][1])
     assert sent["name"] == "OnlyName"
@@ -1110,22 +1183,22 @@ def test_wifi_create_name_only_string_typed() -> None:
 
 def test_wifi_create_rejects_mismatched_name_and_ssid() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     resource = WiFiNetworksResource(client)
 
     with pytest.raises(ValueError, match="identical"):
-        resource.create(site_id="s1", wlan_group="w1", type="open", ssid="A", name="B")
+        resource.create(site_id="s1", ap_groups=["w1"], type="open", ssid="A", name="B")
 
 
 def test_wifi_create_rejects_network_data_name() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     resource = WiFiNetworksResource(client)
 
     with pytest.raises(ValueError, match="network_data must not include 'name'"):
         resource.create(
             site_id="s1",
-            wlan_group="w1",
+            ap_groups=["w1"],
             type="open",
             ssid="SsidName",
             network_data={"name": "NetworkName"},
@@ -1134,61 +1207,53 @@ def test_wifi_create_rejects_network_data_name() -> None:
 
 def test_wifi_create_requires_broadcast_name() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     resource = WiFiNetworksResource(client)
 
     with pytest.raises(ValueError, match="ssid' and/or 'name'"):
-        resource.create(site_id="s1", wlan_group="w1", type="open")
-
-
-def test_wifi_assign_to_ap_group_unchanged() -> None:
-    client = DummyClient()
-    resource = WiFiNetworksResource(client)
-    resource.assign_to_ap_group(site_id="s1", wlan_id="w1", ap_group_id="g1")
-    assert client.post_calls[0] == (
-        "/openapi/v1/sites/s1/wlans/w1/ap-groups",
-        {"wlanId": "w1", "apGroupId": "g1"},
-    )
+        resource.create(site_id="s1", ap_groups=["w1"], type="open")
 
 
 class OmadacPathDummyClient(DummyClient):
     def api_path(self, path: str) -> str:
-        return path.replace("/openapi/v1/", "/openapi/v1/omadac-1/")
+        for version in ("v1", "v2"):
+            path = path.replace(f"/openapi/{version}/sites/", f"/openapi/{version}/omadac-1/sites/")
+        return path
 
 
 def test_wifi_methods_use_api_path_rewrite() -> None:
     client = OmadacPathDummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     client.get_responses = [
         {"result": {"data": []}},
         _rate_limit_profiles_response(),
     ]
-    client.post_response = {"result": {"ssidId": "s-new"}}
+    client.post_response = {"result": {"id": "s-new"}}
     resource = WiFiNetworksResource(client)
 
-    resource.all(site_id="s1", wlan_group="w1")
+    resource.all(site_id="s1")
     resource.create(
         site_id="s1",
-        wlan_group="w1",
+        ap_groups=["w1"],
         type="open",
         ssid="GuestSSID",
         rate_limit_profile_name="Default",
     )
 
-    assert client.get_calls[0][0] == "/openapi/v1/omadac-1/sites/s1/wireless-network/wlans/w1/ssids"
-    assert client.post_calls[0][0] == "/openapi/v1/omadac-1/sites/s1/wireless-network/wlans/w1/ssids"
-    assert any(c[0].endswith("/update-rate-limit") for c in client.patch_calls)
+    assert client.get_calls[0][0] == "/openapi/v2/omadac-1/sites/s1/wireless-network/ssids"
+    assert client.post_calls[0][0] == "/openapi/v2/omadac-1/sites/s1/wireless-network/ssids"
+    assert client.patch_calls[-1][0] == "/openapi/v1/omadac-1/sites/s1/wireless-network/ssids/s-new/rate-limit"
     assert any("/rate-limit-profiles" in c[0] for c in client.get_calls)
 
 
 def test_wifi_create_open_works_without_security_blocks() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     _wire_post_create(client)
     resource = WiFiNetworksResource(client)
     result = resource.create(
         site_id="s1",
-        wlan_group="w1",
+        ap_groups=["w1"],
         type="open",
         ssid="GuestSSID",
     )
@@ -1227,7 +1292,7 @@ def _ssid_detail_minimal(*, name: str = "N", ssid_id: str = "s1", security: int 
 
 def test_wifi_filter_by_ssid_matches_broadcast_name_field() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     client.get_response = {
         "result": {
             "data": [
@@ -1238,15 +1303,15 @@ def test_wifi_filter_by_ssid_matches_broadcast_name_field() -> None:
     }
     resource = WiFiNetworksResource(client)
 
-    matched = resource.filter(site_id="s1", wlan_group="Corp", ssid="Guest")
+    matched = resource.filter(site_id="s1", ssid="Guest")
 
     assert matched == [{"ssidId": "a", "name": "Guest", "security": 0}]
-    assert client.get_calls[0][1] == {"page": 1, "pageSize": 1000, "searchKey": "Guest"}
+    assert client.get_calls[0][1] == {"page": 1, "pageSize": 100}
 
 
 def test_wifi_filter_combined_criteria_without_search_key_optimization() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     client.get_response = {
         "result": {
             "data": [
@@ -1257,55 +1322,57 @@ def test_wifi_filter_combined_criteria_without_search_key_optimization() -> None
     }
     resource = WiFiNetworksResource(client)
 
-    matched = resource.filter(site_id="s1", wlan_group="Corp", name="Guest", security=3)
+    matched = resource.filter(site_id="s1", name="Guest", security=3)
 
     assert matched == [{"ssidId": "b", "name": "Guest", "security": 3}]
-    assert client.get_calls[0][1] == {"page": 1, "pageSize": 1000}
+    assert client.get_calls[0][1] == {"page": 1, "pageSize": 100}
 
 
 def test_wifi_filter_rejects_unknown_criterion() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     client.get_response = {"result": {"data": []}}
     resource = WiFiNetworksResource(client)
 
     with pytest.raises(ValueError, match="Unsupported filter criteria"):
-        resource.filter(site_id="s1", wlan_group="Corp", foo="bar")
+        resource.filter(site_id="s1", foo="bar")
 
 
 def test_wifi_filter_requires_at_least_one_criterion() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     resource = WiFiNetworksResource(client)
 
     with pytest.raises(ValueError, match="at least one filter criterion"):
-        resource.filter(site_id="s1", wlan_group="Corp")
+        resource.filter(
+            site_id="s1",
+        )
 
 
 def test_wifi_filter_rejects_mismatched_ssid_and_name_criteria() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     client.get_response = {"result": {"data": []}}
     resource = WiFiNetworksResource(client)
 
     with pytest.raises(ValueError, match="ssid' and 'name'"):
-        resource.filter(site_id="s1", wlan_group="Corp", ssid="A", name="B")
+        resource.filter(site_id="s1", ssid="A", name="B")
 
 
 def test_wifi_update_basic_config_patches_merged_payload() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     detail = _ssid_detail_minimal(name="Old", security=3)
     detail["pskSetting"] = {"securityKey": "x"}
     client.get_response = {"result": detail}
     resource = WiFiNetworksResource(client)
 
-    result = resource.update_basic_config(site_id="s1", wlan_group="w1", id="s1", ssid="NewSSID")
+    result = resource.update_basic_config(site_id="s1", id="s1", ssid="NewSSID")
 
     assert result == {"ok": True}
     assert len(client.get_calls) == 1
     path, body = client.patch_calls[0]
-    assert path.endswith("/wireless-network/wlans/w1/ssids/s1/update-basic-config")
+    assert path.endswith("/wireless-network/ssids/s1/basic-config")
     sent = cast(dict[str, object], body)
     assert sent["name"] == "NewSSID"
     assert sent["security"] == 3
@@ -1313,7 +1380,7 @@ def test_wifi_update_basic_config_patches_merged_payload() -> None:
 
 def test_wifi_update_basic_config_by_name() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     detail = _ssid_detail_minimal(name="Guest", ssid_id="s9", security=0)
     client.get_responses = [
         {"result": {"data": [{"ssidId": "s9", "name": "Guest"}]}},
@@ -1323,12 +1390,11 @@ def test_wifi_update_basic_config_by_name() -> None:
 
     resource.update_basic_config(
         site_id="s1",
-        wlan_group="Corp",
         name="Guest",
         network_data={"guestNetEnable": True},
     )
 
-    assert client.patch_calls[0][0].endswith("/ssids/s9/update-basic-config")
+    assert client.patch_calls[0][0].endswith("/ssids/s9/basic-config")
     assert cast(dict[str, object], client.patch_calls[0][1])["guestNetEnable"] is True
 
 
@@ -1340,11 +1406,11 @@ def test_ssid_detail_to_basic_config_patch_unknown_override_raises() -> None:
 
 def test_wifi_update_basic_config_vlan_shortcut() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     client.get_response = {"result": _ssid_detail_minimal(name="N", security=0)}
     resource = WiFiNetworksResource(client)
 
-    resource.update_basic_config(site_id="s1", wlan_group="w1", id="s1", vlan=100)
+    resource.update_basic_config(site_id="s1", id="s1", vlan=100)
 
     sent = cast(dict[str, object], client.patch_calls[0][1])
     assert sent["vlanSetting"] == {"mode": 1, "customConfig": {"customMode": 1, "vlanPoolIds": "100"}}
@@ -1353,14 +1419,12 @@ def test_wifi_update_basic_config_vlan_shortcut() -> None:
 
 def test_wifi_update_basic_config_rejects_vlan_and_vlan_setting() -> None:
     client = DummyClient()
-    _wire_wlan_group(client, group_id="w1", group_name="Corp")
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
     client.get_response = {"result": _ssid_detail_minimal()}
     resource = WiFiNetworksResource(client)
 
     with pytest.raises(ValueError, match="either 'vlan' or a 'vlanSetting'"):
-        resource.update_basic_config(
-            site_id="s1", wlan_group="w1", id="s1", vlan=100, network_data={"vlanSetting": {"mode": 1}}
-        )
+        resource.update_basic_config(site_id="s1", id="s1", vlan=100, network_data={"vlanSetting": {"mode": 1}})
 
 
 def test_ssid_detail_to_basic_config_patch_missing_required_raises() -> None:

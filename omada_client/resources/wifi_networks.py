@@ -1,10 +1,14 @@
-"""WiFi network operations for Omada."""
+"""Site SSID (Wi-Fi network) operations for Omada (controller 6.3+).
+
+SSIDs are site-wide objects bound to one or more AP groups via ``apGroupIds``.
+"""
 
 from __future__ import annotations
 
 from typing import Any, cast
 
-from omada_client.exceptions import WiFiNetworkPartiallyConfiguredError
+from omada_client.exceptions import WiFiNetworkNotFoundError, WiFiNetworkPartiallyConfiguredError
+from omada_client.resources.base import fetch_all_pages
 from omada_client.wifi_payload_utils import (
     _build_dpsk_radius_setting,
     _build_ppsk_local_setting,
@@ -21,30 +25,23 @@ _NETWORK_TYPE_ALIASES: dict[str, str] = {
     "ppsk-local": "ppsk_local",
 }
 
-# Top-level list item keys accepted by ``filter`` (strict); ``ssid`` matches JSON ``name``.
+# Top-level site SSID list item keys accepted by ``filter`` (strict); ``ssid`` matches JSON ``name``.
 _FILTER_CRITERIA_KEYS: frozenset[str] = frozenset(
     {
-        "autoWanAccess",
         "band",
         "broadcast",
-        "enable11r",
-        "entSetting",
-        "greEnable",
+        "chooseDevices",
+        "description",
         "guestNetEnable",
-        "hidePwd",
-        "mloEnable",
+        "id",
         "name",
-        "oweEnable",
-        "pmfMode",
-        "ppskSetting",
-        "prohibitWifiShare",
-        "pskSetting",
         "security",
         "ssid",
+        "ssidEnable",
         "ssidId",
         "vlanEnable",
         "vlanId",
-        "vlanSetting",
+        "vlanPoolIds",
     }
 )
 _TYPE_TO_SECURITY = {
@@ -92,16 +89,8 @@ class WiFiNetworksResource:
         return []
 
     @staticmethod
-    def _extract_wlan_id(item: dict[str, Any]) -> str | None:
-        for key in ("wlanId", "id"):
-            value = item.get(key)
-            if isinstance(value, str) and value:
-                return value
-        return None
-
-    @staticmethod
     def _extract_ssid_id(item: dict[str, Any]) -> str | None:
-        for key in ("ssidId", "id"):
+        for key in ("id", "ssidId"):
             value = item.get(key)
             if isinstance(value, str) and value:
                 return value
@@ -119,18 +108,18 @@ class WiFiNetworksResource:
         self,
         *,
         site_id: str,
-        wlan_id: str,
         broadcast: str,
         create_response: dict[str, Any],
     ) -> str:
         ssid_id = self._extract_ssid_id_from_response(create_response)
         if ssid_id is not None:
             return ssid_id
-        matched = self._resolve_by_name(site_id=site_id, wlan_id=wlan_id, name=broadcast)
+        matched = self._resolve_by_name(site_id=site_id, name=broadcast)
         ssid_id = self._extract_ssid_id(matched)
         if ssid_id is None:
             raise ValueError(
-                "Could not resolve ssidId after create; post-create PATCH requires ssidId in the create response or list lookup"
+                "Could not resolve the SSID id after create; post-create PATCH requires an id in the create "
+                "response or list lookup"
             )
         return ssid_id
 
@@ -573,82 +562,46 @@ class WiFiNetworksResource:
         if network_type == "aaa" and not isinstance(payload.get("entSetting"), dict):
             raise ValueError("type='aaa' requires ent_setting (dict)")
 
-    def _resolve_wlan_group_id(self, *, site_id: str, wlan_group: str) -> str:
-        if not isinstance(wlan_group, str) or not wlan_group:
-            raise ValueError("wlan_group must be a non-empty string")
-
-        if not hasattr(self.client, "wlan_groups"):
-            raise ValueError("client.wlan_groups is required to resolve wlan_group")
-
-        group_by_id_getter = getattr(self.client.wlan_groups, "get", None)
-        if not callable(group_by_id_getter):
-            raise ValueError("client.wlan_groups.get is required to resolve wlan_group")
-
-        try:
-            by_id = cast(dict[str, Any], group_by_id_getter(site_id=site_id, id=wlan_group))
-            by_id_wlan_id = self._extract_wlan_id(by_id)
-            if by_id_wlan_id is not None:
-                return by_id_wlan_id
-            # Some controllers return minimal/empty detail payloads; if id lookup itself
-            # succeeded, treat the caller input as the resolved wlan id.
-            return wlan_group
-        except Exception:
-            # Fall back to name-based resolution when id lookup fails.
-            pass
-
-        by_name = cast(dict[str, Any], group_by_id_getter(site_id=site_id, name=wlan_group))
-        by_name_wlan_id = self._extract_wlan_id(by_name)
-        if by_name_wlan_id is None:
-            raise ValueError(f"Matched WLAN group '{wlan_group}' does not include a valid wlanId")
-        return by_name_wlan_id
-
-    def _default_list_params(self, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        final_params = {"page": 1, "pageSize": 1000}
-        if params:
-            final_params.update(params)
-        return final_params
-
-    def _resolve_by_name(self, *, site_id: str, wlan_id: str, name: str) -> dict[str, Any]:
-        response = self.client.get(
-            self._path(f"/openapi/v1/sites/{site_id}/wireless-network/wlans/{wlan_id}/ssids"),
-            params=self._default_list_params({"searchKey": name}),
-        )
-        networks = self._coerce_list_response(cast(dict[str, Any], response))
-        exact_matches = [item for item in networks if isinstance(item.get("name"), str) and item["name"] == name]
-        if not exact_matches:
-            raise ValueError(f"Wi-Fi network with name '{name}' was not found")
-        if len(exact_matches) > 1:
-            raise ValueError(f"Multiple Wi-Fi networks found with name '{name}'")
-        return exact_matches[0]
-
-    def all(
-        self,
-        *,
-        site_id: str,
-        wlan_group: str,
-        params: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
-        wlan_id = self._resolve_wlan_group_id(site_id=site_id, wlan_group=wlan_group)
-        response = self.client.get(
-            self._path(f"/openapi/v1/sites/{site_id}/wireless-network/wlans/{wlan_id}/ssids"),
-            params=self._default_list_params(params),
-        )
-        return self._coerce_list_response(cast(dict[str, Any], response))
-
     @staticmethod
-    def _list_search_params_for_filter(criteria: dict[str, Any]) -> dict[str, Any] | None:
-        """When criteria are only broadcast-name selectors, narrow the list GET with ``searchKey``."""
-        keys = frozenset(criteria.keys())
-        if keys - {"ssid", "name"}:
-            return None
-        if "ssid" in criteria and "name" in criteria and criteria["ssid"] != criteria["name"]:
-            raise ValueError("filter criteria 'ssid' and 'name' must match when both are provided")
-        term = criteria.get("name")
-        if term is None:
-            term = criteria.get("ssid")
-        if isinstance(term, str) and term:
-            return {"searchKey": term}
-        return None
+    def _require_one_selector(id: str | None, name: str | None) -> None:
+        if (id is None) == (name is None):
+            raise ValueError("Provide exactly one of 'id' or 'name'")
+
+    def _resolve_ap_group_ids(self, *, site_id: str, ap_groups: list[str]) -> list[str]:
+        resolver = getattr(getattr(self.client, "ap_groups", None), "resolve_ids", None)
+        if not callable(resolver):
+            raise ValueError("client.ap_groups.resolve_ids is required to resolve ap_groups")
+        return cast(list[str], resolver(site_id=site_id, ap_groups=ap_groups))
+
+    def _list_path(self, site_id: str) -> str:
+        return self._path(f"/openapi/v2/sites/{site_id}/wireless-network/ssids")
+
+    def _ssid_path(self, site_id: str, ssid_id: str, suffix: str = "") -> str:
+        return self._path(f"/openapi/v1/sites/{site_id}/wireless-network/ssids/{ssid_id}{suffix}")
+
+    def _resolve_by_name(self, *, site_id: str, name: str) -> dict[str, Any]:
+        matches = [item for item in self.all(site_id=site_id) if item.get("name") == name]
+        if not matches:
+            raise WiFiNetworkNotFoundError(f"Wi-Fi network with name '{name}' was not found on site '{site_id}'")
+        if len(matches) > 1:
+            raise ValueError(
+                f"Multiple Wi-Fi networks found with name '{name}' on site '{site_id}'; "
+                "use filter(name=...) and select by id"
+            )
+        return matches[0]
+
+    def _resolve_ssid_id(self, *, site_id: str, id: str | None, name: str | None) -> str:
+        self._require_one_selector(id, name)
+        if id is not None:
+            return id
+        ssid_id = self._extract_ssid_id(self._resolve_by_name(site_id=site_id, name=cast(str, name)))
+        if ssid_id is None:
+            raise ValueError(f"Matched Wi-Fi network '{name}' does not include a valid id")
+        return ssid_id
+
+    def all(self, *, site_id: str) -> list[dict[str, Any]]:
+        """List every SSID on the site (all AP groups)."""
+        return fetch_all_pages(self.client, self._list_path(site_id))
 
     @staticmethod
     def _item_matches_filter_criteria(item: dict[str, Any], criteria: dict[str, Any]) -> bool:
@@ -658,72 +611,53 @@ class WiFiNetworksResource:
                 return False
         return True
 
-    def filter(
-        self,
-        *,
-        site_id: str,
-        wlan_group: str,
-        **criteria: Any,
-    ) -> list[dict[str, Any]]:
+    def filter(self, *, site_id: str, **criteria: Any) -> list[dict[str, Any]]:
         if not criteria:
             raise ValueError("Provide at least one filter criterion as a keyword argument")
         unknown = frozenset(criteria) - _FILTER_CRITERIA_KEYS
         if unknown:
             raise ValueError(f"Unsupported filter criteria: {', '.join(sorted(unknown))}")
+        if "ssid" in criteria and "name" in criteria and criteria["ssid"] != criteria["name"]:
+            raise ValueError("filter criteria 'ssid' and 'name' must match when both are provided")
+        return [item for item in self.all(site_id=site_id) if self._item_matches_filter_criteria(item, criteria)]
 
-        list_params = self._list_search_params_for_filter(dict(criteria))
-        items = self.all(site_id=site_id, wlan_group=wlan_group, params=list_params)
-        return [item for item in items if self._item_matches_filter_criteria(item, criteria)]
+    def get(self, *, site_id: str, id: str | None = None, name: str | None = None) -> dict[str, Any]:
+        """Return the SSID detail (``SsidDetailOpenApiVO``), including ``apGroupIds``."""
+        ssid_id = self._resolve_ssid_id(site_id=site_id, id=id, name=name)
+        payload = cast(dict[str, Any], self.client.get(self._ssid_path(site_id, ssid_id)))
+        result = payload.get("result")
+        if isinstance(result, dict):
+            return result
+        return payload
 
-    def get(
+    def delete(self, *, site_id: str, id: str | None = None, name: str | None = None) -> dict[str, Any]:
+        ssid_id = self._resolve_ssid_id(site_id=site_id, id=id, name=name)
+        return cast(dict[str, Any], self.client.delete(self._ssid_path(site_id, ssid_id)))
+
+    def get_ap_groups(self, *, site_id: str, id: str | None = None, name: str | None = None) -> list[dict[str, Any]]:
+        """Return the AP groups the SSID is bound to (``ApGroupDetailVO`` items)."""
+        ssid_id = self._resolve_ssid_id(site_id=site_id, id=id, name=name)
+        payload = cast(dict[str, Any], self.client.get(self._ssid_path(site_id, ssid_id, "/ap-groups")))
+        result = payload.get("result")
+        groups = result.get("apGroups") if isinstance(result, dict) else None
+        if not isinstance(groups, list):
+            return []
+        return [group for group in groups if isinstance(group, dict)]
+
+    def set_ap_groups(
         self,
         *,
         site_id: str,
-        wlan_group: str,
         id: str | None = None,
         name: str | None = None,
+        ap_groups: list[str],
     ) -> dict[str, Any]:
-        if (id is None) == (name is None):
-            raise ValueError("Provide exactly one of 'id' or 'name'")
-
-        wlan_id = self._resolve_wlan_group_id(site_id=site_id, wlan_group=wlan_group)
-        if id is not None:
-            response = self.client.get(
-                self._path(f"/openapi/v1/sites/{site_id}/wireless-network/wlans/{wlan_id}/ssids/{id}")
-            )
-            payload = cast(dict[str, Any], response)
-            result = payload.get("result")
-            if isinstance(result, dict):
-                return result
-            return payload
-
-        matched = self._resolve_by_name(site_id=site_id, wlan_id=wlan_id, name=cast(str, name))
-        ssid_id = self._extract_ssid_id(matched)
-        if ssid_id is None:
-            raise ValueError(f"Matched Wi-Fi network '{name}' does not include a valid ssidId")
-        return self.get(site_id=site_id, wlan_group=wlan_group, id=ssid_id)
-
-    def delete(
-        self,
-        *,
-        site_id: str,
-        wlan_group: str,
-        id: str | None = None,
-        name: str | None = None,
-    ) -> dict[str, Any]:
-        if (id is None) == (name is None):
-            raise ValueError("Provide exactly one of 'id' or 'name'")
-
-        wlan_id = self._resolve_wlan_group_id(site_id=site_id, wlan_group=wlan_group)
-        ssid_id = id
-        if ssid_id is None:
-            matched = self._resolve_by_name(site_id=site_id, wlan_id=wlan_id, name=cast(str, name))
-            ssid_id = self._extract_ssid_id(matched)
-            if ssid_id is None:
-                raise ValueError(f"Matched Wi-Fi network '{name}' does not include a valid ssidId")
-
-        response = self.client.delete(
-            self._path(f"/openapi/v1/sites/{site_id}/wireless-network/wlans/{wlan_id}/ssids/{ssid_id}")
+        """Replace the SSID's AP-group binding with ``ap_groups`` (ids or names)."""
+        ssid_id = self._resolve_ssid_id(site_id=site_id, id=id, name=name)
+        ap_group_ids = self._resolve_ap_group_ids(site_id=site_id, ap_groups=ap_groups)
+        response = self.client.patch(
+            self._ssid_path(site_id, ssid_id, "/ap-groups"),
+            json={"apGroupIds": ap_group_ids},
         )
         return cast(dict[str, Any], response)
 
@@ -731,7 +665,6 @@ class WiFiNetworksResource:
         self,
         *,
         site_id: str,
-        wlan_group: str,
         id: str | None = None,
         name: str | None = None,
         network_data: dict[str, Any] | None = None,
@@ -746,10 +679,7 @@ class WiFiNetworksResource:
         not both. Note: because some controllers omit ``pmfMode``/``enable11r`` on the SSID
         GET, an update that does not set them explicitly resets them to defaults.
         """
-        if (id is None) == (name is None):
-            raise ValueError("Provide exactly one of 'id' or 'name'")
-
-        detail = self.get(site_id=site_id, wlan_group=wlan_group, id=id, name=name)
+        detail = self.get(site_id=site_id, id=id, name=name)
         overrides: dict[str, Any] = {}
         if network_data is not None:
             if not isinstance(network_data, dict):
@@ -762,97 +692,71 @@ class WiFiNetworksResource:
             overrides["vlanSetting"] = _build_vlan_pool_setting(vlan)
         payload = ssid_detail_to_basic_config_patch(detail, overrides if overrides else None)
 
-        ssid_id = self._extract_ssid_id(detail)
+        ssid_id = self._extract_ssid_id(detail) or id
         if ssid_id is None:
-            raise ValueError("SSID detail did not include a valid ssidId for update")
+            raise ValueError("SSID detail did not include a valid id for update")
 
-        wlan_id = self._resolve_wlan_group_id(site_id=site_id, wlan_group=wlan_group)
-        path = f"/openapi/v1/sites/{site_id}/wireless-network/wlans/{wlan_id}/ssids/{ssid_id}/update-basic-config"
-        response = self.client.patch(self._path(path), json=payload)
+        response = self.client.patch(self._ssid_path(site_id, ssid_id, "/basic-config"), json=payload)
         return cast(dict[str, Any], response)
 
     def update_multicast_config(
         self,
         *,
         site_id: str,
-        wlan_group: str,
         id: str | None = None,
         name: str | None = None,
         multicast_config: dict[str, Any],
     ) -> dict[str, Any]:
-        if (id is None) == (name is None):
-            raise ValueError("Provide exactly one of 'id' or 'name'")
-
+        self._require_one_selector(id, name)
         payload = self._validate_multicast_config_dict(multicast_config)
-
-        wlan_id = self._resolve_wlan_group_id(site_id=site_id, wlan_group=wlan_group)
-        ssid_id = id
-        if ssid_id is None:
-            matched = self._resolve_by_name(site_id=site_id, wlan_id=wlan_id, name=cast(str, name))
-            ssid_id = self._extract_ssid_id(matched)
-            if ssid_id is None:
-                raise ValueError(f"Matched Wi-Fi network '{name}' does not include a valid ssidId")
-
-        path = (
-            f"/openapi/v1/sites/{site_id}/wireless-network/wlans/{wlan_id}/ssids/{ssid_id}" "/update-multicast-config"
-        )
-        response = self.client.patch(self._path(path), json=payload)
+        ssid_id = self._resolve_ssid_id(site_id=site_id, id=id, name=name)
+        response = self.client.patch(self._ssid_path(site_id, ssid_id, "/multicast-config"), json=payload)
         return cast(dict[str, Any], response)
 
     def update_rate_control(
         self,
         *,
         site_id: str,
-        wlan_group: str,
         id: str | None = None,
         name: str | None = None,
         rate_control: dict[str, Any],
     ) -> dict[str, Any]:
-        if (id is None) == (name is None):
-            raise ValueError("Provide exactly one of 'id' or 'name'")
+        """PATCH the SSID's data/management rate control (flat ``UpdateSsidRateControlOpenApiVO``).
 
+        Sent to the deprecated AP-group-nested ``update-rate-control`` route under the SSID's
+        first bound AP group: on controller 6.3.0.45 the site route
+        (``.../ssids/{ssidId}/rate-control``) answers HTTP 500 for every body.
+        """
+        self._require_one_selector(id, name)
         payload = self._validate_rate_control_dict(rate_control)
+        ssid_id = self._resolve_ssid_id(site_id=site_id, id=id, name=name)
+        ap_group_ids = self.get(site_id=site_id, id=ssid_id).get("apGroupIds")
+        if not isinstance(ap_group_ids, list) or not ap_group_ids or not isinstance(ap_group_ids[0], str):
+            raise ValueError(f"SSID '{ssid_id}' is not bound to an AP group; rate control needs one")
+        return self._patch_rate_control(site_id=site_id, ssid_id=ssid_id, ap_group_id=ap_group_ids[0], payload=payload)
 
-        wlan_id = self._resolve_wlan_group_id(site_id=site_id, wlan_group=wlan_group)
-        ssid_id = id
-        if ssid_id is None:
-            matched = self._resolve_by_name(site_id=site_id, wlan_id=wlan_id, name=cast(str, name))
-            ssid_id = self._extract_ssid_id(matched)
-            if ssid_id is None:
-                raise ValueError(f"Matched Wi-Fi network '{name}' does not include a valid ssidId")
-
-        path = f"/openapi/v1/sites/{site_id}/wireless-network/wlans/{wlan_id}/ssids/{ssid_id}" "/update-rate-control"
-        response = self.client.patch(self._path(path), json=payload)
-        return cast(dict[str, Any], response)
+    def _patch_rate_control(
+        self, *, site_id: str, ssid_id: str, ap_group_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        path = f"/openapi/v1/sites/{site_id}/wireless-network/wlans/{ap_group_id}/ssids/{ssid_id}/update-rate-control"
+        return cast(dict[str, Any], self.client.patch(self._path(path), json=payload))
 
     def update_rate_limit(
         self,
         *,
         site_id: str,
-        wlan_group: str,
         id: str | None = None,
         name: str | None = None,
         rate_limit_profile_name: str,
     ) -> dict[str, Any]:
-        if (id is None) == (name is None):
-            raise ValueError("Provide exactly one of 'id' or 'name'")
-
+        self._require_one_selector(id, name)
         profile_id = self._lookup_rate_limit_profile_id_by_name(
             site_id=site_id,
             name=rate_limit_profile_name,
         )
         payload = _build_rate_limit_profile_body(profile_id)
-
-        wlan_id = self._resolve_wlan_group_id(site_id=site_id, wlan_group=wlan_group)
-        ssid_id = id
-        if ssid_id is None:
-            matched = self._resolve_by_name(site_id=site_id, wlan_id=wlan_id, name=cast(str, name))
-            ssid_id = self._extract_ssid_id(matched)
-            if ssid_id is None:
-                raise ValueError(f"Matched Wi-Fi network '{name}' does not include a valid ssidId")
-
-        path = f"/openapi/v1/sites/{site_id}/wireless-network/wlans/{wlan_id}/ssids/{ssid_id}" "/update-rate-limit"
-        response = self.client.patch(self._path(path), json=payload)
+        ssid_id = self._resolve_ssid_id(site_id=site_id, id=id, name=name)
+        response = self.client.patch(self._ssid_path(site_id, ssid_id, "/rate-limit"), json=payload)
         return cast(dict[str, Any], response)
 
     def _validate_post_create_inputs(
@@ -880,20 +784,18 @@ class WiFiNetworksResource:
         self,
         *,
         site_id: str,
-        wlan_group: str,
-        wlan_id: str,
+        ap_group_ids: list[str],
         broadcast: str,
         create_response: dict[str, Any],
         multicast_config: dict[str, Any] | None,
         rate_control: dict[str, Any] | None,
         rate_limit_profile_name: str | None,
     ) -> None:
-        """Run the opt-in post-create PATCHes; wrap any failure with the created ``ssidId``."""
+        """Run the opt-in post-create PATCHes; wrap any failure with the created SSID id."""
         if multicast_config is None and rate_control is None and rate_limit_profile_name is None:
             return
         ssid_id = self._resolve_ssid_id_after_create(
             site_id=site_id,
-            wlan_id=wlan_id,
             broadcast=broadcast,
             create_response=create_response,
         )
@@ -901,23 +803,21 @@ class WiFiNetworksResource:
         step = ""
         try:
             if multicast_config is not None:
-                step = "update-multicast-config"
-                self.update_multicast_config(
-                    site_id=site_id, wlan_group=wlan_group, id=ssid_id, multicast_config=multicast_config
-                )
+                step = "multicast-config"
+                self.update_multicast_config(site_id=site_id, id=ssid_id, multicast_config=multicast_config)
                 completed_steps.append(step)
             if rate_control is not None:
-                step = "update-rate-control"
-                self.update_rate_control(site_id=site_id, wlan_group=wlan_group, id=ssid_id, rate_control=rate_control)
+                step = "rate-control"
+                self._patch_rate_control(
+                    site_id=site_id,
+                    ssid_id=ssid_id,
+                    ap_group_id=ap_group_ids[0],
+                    payload=self._validate_rate_control_dict(rate_control),
+                )
                 completed_steps.append(step)
             if rate_limit_profile_name is not None:
-                step = "update-rate-limit"
-                self.update_rate_limit(
-                    site_id=site_id,
-                    wlan_group=wlan_group,
-                    id=ssid_id,
-                    rate_limit_profile_name=rate_limit_profile_name,
-                )
+                step = "rate-limit"
+                self.update_rate_limit(site_id=site_id, id=ssid_id, rate_limit_profile_name=rate_limit_profile_name)
                 completed_steps.append(step)
         except Exception as exc:
             raise WiFiNetworkPartiallyConfiguredError(
@@ -930,7 +830,7 @@ class WiFiNetworksResource:
         self,
         *,
         site_id: str,
-        wlan_group: str,
+        ap_groups: list[str],
         type: str,
         ssid: str | None = None,
         name: str | None = None,
@@ -948,6 +848,10 @@ class WiFiNetworksResource:
         rate_limit_profile_name: str | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
+        """Create a site SSID bound to ``ap_groups`` (AP group ids or names).
+
+        The new SSID id is at ``result.id``.
+        """
         network_type = self._normalize_network_type(type)
         self._validate_type(network_type)
         broadcast = self._resolve_broadcast_name(ssid=ssid, name=name)
@@ -957,6 +861,8 @@ class WiFiNetworksResource:
             rate_control=rate_control,
             rate_limit_profile_name=rate_limit_profile_name,
         )
+        if network_data is not None and "apGroupIds" in network_data:
+            raise ValueError("network_data must not include 'apGroupIds'; pass ap_groups")
 
         kw = dict(kwargs)
         self._validate_type_param_compatibility(network_type=network_type, kwargs=kw)
@@ -967,7 +873,7 @@ class WiFiNetworksResource:
             nas_id=nas_id,
         )
 
-        wlan_id = self._resolve_wlan_group_id(site_id=site_id, wlan_group=wlan_group)
+        ap_group_ids = self._resolve_ap_group_ids(site_id=site_id, ap_groups=ap_groups)
         payload = self._build_default_create_payload(
             broadcast_name=broadcast,
             network_type=network_type,
@@ -1000,37 +906,20 @@ class WiFiNetworksResource:
             payload.update(network_data)
         payload.update(kw)
         payload["name"] = broadcast
+        payload["apGroupIds"] = ap_group_ids
         payload.pop("vlan", None)
 
         self._validate_required_payload_fields(payload)
         self._validate_security_type_requirements(network_type=network_type, payload=payload)
 
-        response = self.client.post(
-            self._path(f"/openapi/v1/sites/{site_id}/wireless-network/wlans/{wlan_id}/ssids"),
-            json=payload,
-        )
+        response = self.client.post(self._list_path(site_id), json=payload)
         self._apply_post_create_patches(
             site_id=site_id,
-            wlan_group=wlan_group,
-            wlan_id=wlan_id,
+            ap_group_ids=ap_group_ids,
             broadcast=broadcast,
             create_response=cast(dict[str, Any], response),
             multicast_config=multicast_config,
             rate_control=rate_control,
             rate_limit_profile_name=rate_limit_profile_name,
-        )
-        return cast(dict[str, Any], response)
-
-    def assign_to_ap_group(
-        self,
-        *,
-        site_id: str,
-        wlan_id: str,
-        ap_group_id: str,
-    ) -> dict[str, Any]:
-        payload = {"wlanId": wlan_id, "apGroupId": ap_group_id}
-        response = self.client.post(
-            self._path(f"/openapi/v1/sites/{site_id}/wlans/{wlan_id}/ap-groups"),
-            json=payload,
         )
         return cast(dict[str, Any], response)

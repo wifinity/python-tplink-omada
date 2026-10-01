@@ -2,6 +2,7 @@
 
 from .client import OmadaClient
 from .exceptions import (
+    APGroupNotFoundError,
     DeviceNotFoundError,
     OmadaAPIError,
     OmadaAuthenticationError,
@@ -10,8 +11,8 @@ from .exceptions import (
     OmadaPermissionError,
     OmadaValidationError,
     RadiusProfileNotFoundError,
+    WiFiNetworkNotFoundError,
     WiFiNetworkPartiallyConfiguredError,
-    WLANGroupNotFoundError,
 )
 from .logging_config import set_log_level
 from .wifi_payload_utils import (
@@ -21,6 +22,7 @@ from .wifi_payload_utils import (
 
 __all__ = [
     "OmadaClient",
+    "APGroupNotFoundError",
     "DeviceNotFoundError",
     "OmadaAPIError",
     "OmadaAuthenticationError",
@@ -29,8 +31,8 @@ __all__ = [
     "OmadaValidationError",
     "OmadaConnectionError",
     "RadiusProfileNotFoundError",
+    "WiFiNetworkNotFoundError",
     "WiFiNetworkPartiallyConfiguredError",
-    "WLANGroupNotFoundError",
     "set_log_level",
     "ssid_detail_to_basic_config_patch",
     "strip_ssid_detail_for_create",

@@ -33,7 +33,11 @@ class DeviceNotFoundError(OmadaNotFoundError):
     pass
 
 
-class WLANGroupNotFoundError(OmadaNotFoundError):
+class APGroupNotFoundError(OmadaNotFoundError):
+    pass
+
+
+class WiFiNetworkNotFoundError(OmadaNotFoundError):
     pass
 
 

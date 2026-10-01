@@ -165,3 +165,34 @@ def test_client_exposes_aps_resource() -> None:
     )
 
     assert client.aps is not None
+
+
+def test_client_exposes_ap_groups_and_no_wlan_groups() -> None:
+    import omada_client
+
+    client = OmadaClient(
+        base_url="https://controller.example",
+        omadac_id="omadac-1",
+        client_id="id",
+        client_secret="secret",
+    )
+
+    assert hasattr(client, "ap_groups")
+    assert not hasattr(client, "wlan_groups")
+    assert not hasattr(omada_client, "WLANGroupNotFoundError")
+    assert hasattr(omada_client, "APGroupNotFoundError")
+    assert hasattr(omada_client, "WiFiNetworkNotFoundError")
+
+
+def test_api_path_rewrites_v2_site_paths() -> None:
+    client = OmadaClient(
+        base_url="https://controller.example",
+        omadac_id="omadac-1",
+        client_id="id",
+        client_secret="secret",
+    )
+
+    assert (
+        client.api_path("/openapi/v2/sites/s1/wireless-network/ssids")
+        == "/openapi/v2/omadac-1/sites/s1/wireless-network/ssids"
+    )

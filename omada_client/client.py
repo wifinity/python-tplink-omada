@@ -31,7 +31,6 @@ from .resources import (
     SwitchDot1xResource,
     SwitchesResource,
     WiFiNetworksResource,
-    WLANGroupsResource,
 )
 
 
@@ -81,7 +80,6 @@ class OmadaClient:
         self.switches = SwitchesResource(self)
         self.switch_dot1x = SwitchDot1xResource(self)
         self.wifi_networks = WiFiNetworksResource(self)
-        self.wlan_groups = WLANGroupsResource(self)
         self.ap_groups = APGroupsResource(self)
         self.olts = OLTsResource(self)
         self.radius_profiles = RadiusProfilesResource(self)

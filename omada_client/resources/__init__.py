@@ -13,7 +13,6 @@ from .sites import SitesResource
 from .switch_dot1x import SwitchDot1xResource
 from .switches import SwitchesResource
 from .wifi_networks import WiFiNetworksResource
-from .wlan_groups import WLANGroupsResource
 
 __all__ = [
     "SitesResource",
@@ -24,7 +23,6 @@ __all__ = [
     "LanNetworksResource",
     "RadiusProfilesResource",
     "WiFiNetworksResource",
-    "WLANGroupsResource",
     "APGroupsResource",
     "APsResource",
     "OLTsResource",

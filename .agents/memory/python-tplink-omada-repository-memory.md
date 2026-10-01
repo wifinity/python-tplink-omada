@@ -6,7 +6,7 @@
 ## Architecture conventions
 - `OmadaClient` is the single entry point and exposes resource sub-clients.
 - Public API is dict-first for ergonomics and backward stability.
-- Public resource APIs are keyword-only. Call and define methods on `client.sites`, `client.devices`, `client.aps`, `client.wifi_networks`, `client.wlan_groups`, and `client.ap_groups` with named parameters only.
+- Public resource APIs are keyword-only. Call and define methods on `client.sites`, `client.devices`, `client.aps`, `client.wifi_networks` and `client.ap_groups` with named parameters only.
 - Use `mac` as the canonical MAC-address parameter name for device/AP lookup and action methods.
 - Validate and normalize MAC inputs with `macaddress` before outbound device/AP MAC path/query usage.
 - Canonical outbound MAC format is uppercase hyphen EUI-48: `AA-BB-CC-DD-EE-FF`.
@@ -29,29 +29,35 @@
   - `APsResource.all` returns AP-filtered device collection results via canonical device list semantics.
   - `APsResource.get_by_mac` returns a DeviceInfo-style AP item from AP-filtered device list semantics.
   - `APsResource.get_by_name` returns a DeviceInfo-style AP item resolved by AP name.
-  - `APsResource.get_overview_by_mac` returns AP overview endpoint payload (`/aps/{apMac}`), which can differ in shape from DeviceInfo; adds `result.wlanGroupName` when `wlanId` is present and resolvable via `wlan_groups.get`.
+  - `APsResource.get_overview_by_mac` returns AP overview endpoint payload (`/aps/{apMac}`), which can differ in shape from DeviceInfo; adds `result.apGroupName` when the AP's group id (reported under `wlanId` on 6.3) resolves via `ap_groups.get`.
   - `APsResource.get_wired_uplink_by_mac` returns AP wired uplink endpoint payload (`/aps/{apMac}/wired-uplink`) and augments `result.wiredUplink` with decoded meaning fields (`portTypeMeaning`, `linkStatusMeaning`, `linkSpeedMeaning`, `duplexMeaning`) while preserving numeric codes.
   - `APsResource.get_by_serial` returns a DeviceInfo-style AP item resolved by serial number (`sn`); filtered client-side (no `searchKey` support for `sn`), raises `DeviceNotFoundError` if not found.
 - `SwitchesResource` has the same lookup contract as `APsResource` (mac/name/serial), including `SwitchesResource.get_by_serial` (Decision 38) — DeviceInfo-style, client-side `sn` filter, `DeviceNotFoundError` if not found.
-- WLAN group contract is site-scoped and selector-based:
-  - `WLANGroupsResource.all(*, site_id, params=None)` lists groups from `/wireless-network/wlans`.
-  - `WLANGroupsResource.create(*, site_id, name=None, group_data=None)` creates groups at `/wireless-network/wlans`, accepts direct `name`, and defaults payload `clone=False` unless explicitly set.
-  - `WLANGroupsResource.get(*, site_id, id|name)` requires exactly one selector.
-  - `get(id=...)` resolves by scanning `all()` for a matching `wlanId` (Omada has no supported per-group GET by wlan group id on v1/v2).
-  - `WLANGroupsResource.delete(*, site_id, id|name)` requires exactly one selector and resolves `name` to `wlanId` before delete.
-  - Missing-by-name lookups raise `WLANGroupNotFoundError`; duplicate-name and missing-`wlanId` cases raise `ValueError`.
-- Wi-Fi networks (`WiFiNetworksResource`) are site + WLAN-group scoped SSID CRUD on `/wireless-network/wlans/{wlanId}/ssids`.
+- SDK 2.0 targets controller 6.3+ only (ADR Decision 43). There is no WLAN-group resource; "WLAN group" is the legacy name of AP group, and the ids are identical.
+- AP group contract (`APGroupsResource`, `/sites/{siteId}/ap-groups`):
+  - `all(*, site_id, search_key=None)` pages via `fetch_all_pages` (pageSize 100; the controller rejects >100 despite the spec's 1000).
+  - `get(*, site_id, id|name)`: by id via `/{id}/info`, by name via exact match. `create(*, site_id, name, ap_macs=None)` puts the new id at `result.id`. `update(*, site_id, id|name, new_name=None, add_ap_macs=None, remove_ap_macs=None)` always sends `name`. `delete(*, site_id, id|name)`.
+  - `resolve_ids(*, site_id, ap_groups)` maps ids or names to ids with one list call.
+  - Missing → `APGroupNotFoundError`; duplicate name → `ValueError`.
+  - The controller rejects deleting a group that has APs (-33306) or bound SSIDs (-33305).
+  - An AP is in exactly one group; `addApMacs` moves it out of its previous group.
+- Wi-Fi networks (`WiFiNetworksResource`) are site-wide SSIDs bound to AP groups via `apGroupIds`. List and create use v2 `/openapi/v2/.../wireless-network/ssids`; get, delete and the per-setting PATCHes use v1 `/wireless-network/ssids/{id}/...`.
+  - `create(*, site_id, ap_groups, type, ...)` resolves `ap_groups` to `apGroupIds`; `network_data` must not carry `apGroupIds`.
+  - `get_ap_groups` / `set_ap_groups` read and replace the binding.
+  - SSID names are unique on a site for create and rename (-33219), but the 6.2→6.3 migration leaves same-name duplicates. So `get(name=)` raises `ValueError` on duplicates; use `filter(name=)`. A missing SSID raises `WiFiNetworkNotFoundError`.
+  - `update_rate_control` (and the `rate_control=` step of `create`) PATCHes the deprecated `.../wlans/{firstApGroupId}/ssids/{id}/update-rate-control`, because the site route returns HTTP 500 on 6.3.0.45.
+  - Ids are read from `id` before `ssidId`.
   - `create(..., type=..., ssid=None, name=None, ...)` requires at least one of `ssid` or `name` (broadcast name); if both, they must match. JSON field is always `name`.
   - String `type` maps to Omada `security`: `open`/`open-isolated` (0), `aaa` (2), `psk` (3), `ppsk_local` (4), `dpsk` (5). Alias `ppsk-local` → `ppsk_local`. **`psk`** = WPA-Personal (`wpa_basic.json`, `psk=` required); **`ppsk_local`** = corporate PPSK (`wpa.json`, `ppsk_profile_name=`). Cross-type auth kwargs are rejected (`psk=` only on `psk`; `ppsk_profile_name` only on `ppsk_local`). An external `dpsk-local-auth` type is not the same as `ppsk_local`. `open-isolated` sets `guestNetEnable`; `open` may set `guest_network=True/False`. `hotspot20` is rejected with a clear message.
   - `vlan` sets `vlanId` and Anchor-style `vlanSetting` (Omada create requires both when `vlanEnable`); mutually exclusive with `vlan_setting` dict.
   - `ppsk_profile_name` on `ppsk_local` create resolves Omada id via `GET .../ppsk-profiles` (exact `profileName` match); `radius_profile_name`+`nas_id` for `dpsk` resolves id via `GET .../profiles/radius` (exact `name` match; not with `ppsk_setting`).
   - `pmf_mode` overrides defaults (`2` open/open-isolated, `3` psk/ppsk_local/dpsk); `mac_format` defaults to `2`.
   - `multicast_config={...}` on create POSTs then PATCHes flat `UpdateSsidMultiCastOpenApiVO` fields when set (before optional `rate_control`, then rate limit); reject nested `multiCast` wrapper. `update_multicast_config(..., multicast_data=...)` requires explicit dict (no SDK preset builders; callers own their own GUEST/SECURED dicts).
-  - Every `create()` POSTs then PATCHes `update-rate-limit` with site profile `name=="Default"` unless `rate_limit_profile_id` is set; `update_rate_limit(...)` for standalone PATCH. `build_rate_limit_profile_body(profile_id)` builds nested PATCH body (limits off in customSetting).
-  - `rate_control={...}` on create POSTs then PATCHes `update-rate-control` with caller-supplied flat dict (`UpdateSsidRateControlOpenApiVO` fields); after multicast PATCH when both are set. No SDK template builder — define the dict in the caller; GET nests under `detail["rateControl"]`, PATCH body is flat. `update_rate_control(...)` for standalone PATCH.
+  - Every `create()` POSTs then PATCHes `rate-limit` with site profile `name=="Default"` unless `rate_limit_profile_id` is set; `update_rate_limit(...)` for standalone PATCH. `build_rate_limit_profile_body(profile_id)` builds nested PATCH body (limits off in customSetting).
+  - `rate_control={...}` on create POSTs then PATCHes rate control (legacy nested route, see above) with caller-supplied flat dict (`UpdateSsidRateControlOpenApiVO` fields); after multicast PATCH when both are set. No SDK template builder — define the dict in the caller; GET nests under `detail["rateControl"]`, PATCH body is flat. `update_rate_control(...)` for standalone PATCH.
   - Use package helper `strip_ssid_detail_for_create` when cloning from GET detail into a create body.
-  - `filter(*, site_id, wlan_group, **criteria)` lists via `all` then client-side equality match; strict criterion keys; `ssid` criterion matches JSON `name`; optional `searchKey` list optimization for name-only criteria.
-  - `update_basic_config(..., id|name, network_data=None, **kwargs)` GETs detail, merges into `UpdateSsidBasicConfigOpenApiVO`, PATCHes `.../update-basic-config`; `ssid` in overrides maps to `name`.
+  - `filter(*, site_id, **criteria)` lists every page via `all`, then matches by equality client-side. Criterion keys are strict (site SSID list item fields, plus `ssidEnable`), and the `ssid` criterion matches JSON `name`.
+  - `update_basic_config(*, site_id, id|name, network_data=None, vlan=None, **kwargs)` GETs the detail, merges it into `UpdateSsidBasicConfigOpenApiVO` and PATCHes `.../ssids/{id}/basic-config`. `ssid` in overrides maps to `name`. A `vlanSetting` with mode 0 is sent as `{"mode": 0}`, because the controller rejects an echoed empty `customConfig` with -1001.
   - Package helper `ssid_detail_to_basic_config_patch` projects GET detail + overrides for that PATCH body.
 - DeviceInfo lookup responses are enriched with decoded status labels when numeric fields exist:
   - `statusMeaning` derived from `status`
@@ -94,7 +100,7 @@
 - AP DeviceInfo-vs-overview method split is recorded in `docs/adr.md` Decision 10 and should be preserved in future AP API additions.
 - DeviceInfo status/detail-status enrichment policy is recorded in `docs/adr.md` Decision 11 and should be applied to future DeviceInfo-returning lookup helpers.
 - AP adopt/check facade delegation policy is recorded in `docs/adr.md` Decision 12 and should be preserved for future typed-resource convenience shortcuts.
-- WLAN groups API contract is recorded in `docs/adr.md` Decision 13 and should be followed for future WLAN group API additions.
+- AP group and site SSID contract is recorded in `docs/adr.md` Decision 43 (supersedes 13/14) and should be followed for future additions.
 - AP wired uplink enum-decoding policy is recorded in `docs/adr.md` Decision 15 and should be preserved for future AP wired uplink payload changes.
 - Site update defaulting policy is recorded in `docs/adr.md` Decision 16 and should be preserved for future site update API changes.
 - Wi-Fi SSID create expanded types and `strip_ssid_detail_for_create` are recorded in `docs/adr.md` Decision 18 and should be applied to future Wi-Fi create API changes.

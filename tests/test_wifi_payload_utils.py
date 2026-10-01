@@ -10,6 +10,7 @@ from omada_client.wifi_payload_utils import (
     _build_rate_limit_profile_body,
     _build_vlan_pool_setting,
     ssid_detail_to_basic_config_patch,
+    strip_ssid_detail_for_create,
 )
 
 
@@ -84,3 +85,63 @@ def test_build_dpsk_radius_setting() -> None:
         "nasId": "SITE",
         "type": 2,
     }
+
+
+def test_strip_ssid_detail_for_create_drops_ap_group_binding() -> None:
+    detail = {"name": "Guest", "security": 0, "apGroupIds": ["g1"], "id": "s1", "ssidEnable": True}
+
+    stripped = strip_ssid_detail_for_create(detail)
+
+    assert stripped == {"name": "Guest", "security": 0, "ssidEnable": True}
+
+
+def test_basic_config_patch_drops_custom_config_when_vlan_mode_is_zero() -> None:
+    detail = {
+        "name": "Guest",
+        "band": 3,
+        "broadcast": True,
+        "guestNetEnable": False,
+        "mloEnable": False,
+        "security": 0,
+        "vlanEnable": False,
+        "vlanSetting": {"mode": 0, "customConfig": {}},
+    }
+
+    body = ssid_detail_to_basic_config_patch(detail)
+
+    assert body["vlanSetting"] == {"mode": 0}
+
+
+def test_basic_config_patch_keeps_custom_config_when_vlan_mode_is_set() -> None:
+    vlan_setting = {"mode": 1, "customConfig": {"customMode": 1, "vlanPoolIds": "100"}}
+    detail = {
+        "name": "Guest",
+        "band": 3,
+        "broadcast": True,
+        "guestNetEnable": False,
+        "mloEnable": False,
+        "security": 0,
+        "vlanEnable": False,
+        "vlanSetting": vlan_setting,
+    }
+
+    assert ssid_detail_to_basic_config_patch(detail)["vlanSetting"] == vlan_setting
+
+
+def test_basic_config_patch_fills_none_pmf_mode_and_enable11r() -> None:
+    detail = {
+        "name": "Guest",
+        "band": 3,
+        "broadcast": True,
+        "guestNetEnable": False,
+        "mloEnable": False,
+        "security": 3,
+        "vlanEnable": False,
+        "pmfMode": None,
+        "enable11r": None,
+    }
+
+    body = ssid_detail_to_basic_config_patch(detail)
+
+    assert body["pmfMode"] == 3
+    assert body["enable11r"] is False
