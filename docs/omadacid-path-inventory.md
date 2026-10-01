@@ -4,7 +4,7 @@ Source: `spec/fixed/all-fixed.json`
 
 ## Extracted inventory scope
 
-- Total paths containing `{omadacId}`: 1609
+- Total paths containing `{omadacId}`: 1746
 - Primary implemented prefix family: `/openapi/v1/{omadacId}/sites/...`
 
 ## Mapping to currently implemented resources

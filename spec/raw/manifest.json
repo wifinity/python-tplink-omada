@@ -1,8 +1,8 @@
 {
   "apiVer": "3",
-  "controllerVer": "6.2.0.17",
-  "fetched_at": "2026-07-07T10:01:26Z",
+  "controllerVer": "6.3.0.45",
+  "fetched_at": "2026-10-01T14:22:22Z",
   "source": "controller",
   "spec_info_version": "v0.1",
-  "spec_sha256": "0d28ea967892337526ed2f4a7db2b6ad91abb71a18f40e89930774517c6b0949"
+  "spec_sha256": "5bab7ba28a8de024540a127eb524b8158dda3148b5450b0954ce524fa5fd1e6e"
 }
