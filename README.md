@@ -295,12 +295,14 @@ shortcuts that delegate to the canonical `client.devices` adopt operations.
 `get_ports`/`get_port_vlans`/`update_ports` wrap the AP ethernet-port endpoints
 (the batch `POST /aps/ports/capability` + `POST /aps/ports/config`, which work
 across single- and multi-port AP models — the single-port `GET /ports` /
-`PATCH /ports/{port}` error on multi-port models). `get_ports` returns capability
-flags only (not live state); gate writes on `supportVlanTagged` — tagged VLANs
-are silently ignored on ports that do not support them. `update_ports` passes
-`settings` through verbatim (dict-first). Note the controller **rejects VLAN 1 as
-an explicit native** (error `-39348`): for VLAN-1-untagged management, omit
-`localVlanNetworkId` as shown above. The 8-VLAN hardware limit is not enforced
+`PATCH /ports/{port}` error on multi-port models and on some single-port
+firmware). `get_ports` returns capability flags only (not live state); gate
+writes on `supportVlanTagged` — tagged VLANs are silently ignored on ports that
+do not support them. Send `custom: False` with any `taggedNetworkId` /
+`untaggedNetworkId`: without it the controller silently ignores both lists.
+`update_ports` passes `settings` through verbatim (dict-first). Note the
+controller **rejects VLAN 1 as an explicit native** (error `-39348`): for
+VLAN-1-untagged management, omit `localVlanNetworkId` as shown above. The 8-VLAN hardware limit is not enforced
 here — that is the caller's responsibility.
 
 ### AP Groups

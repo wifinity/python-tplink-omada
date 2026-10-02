@@ -182,10 +182,10 @@ class APsResource:
         """Return per-port capability rows for one AP.
 
         POST /aps/ports/capability (``getMultiApPortList``) with a single-MAC
-        ``apMacList``. This batch endpoint is the model-portable read: the
-        single-port GET /aps/{mac}/ports works on some AP models but returns a
-        generic error on multi-port models (e.g. EAP650GP), whereas this one
-        works across both.
+        ``apMacList``. This batch endpoint is the portable read: the single-port
+        GET /aps/{mac}/ports returns a generic error on multi-port models (e.g.
+        EAP650GP) and on some firmware of single-port models (e.g. EAP725-Wall
+        1.1.2), whereas this one works across all of them.
 
         Each item is an ``APLANPortList`` row keyed by the string port id
         (``id``/``lanPort`` such as ``"ETH0"`` — there is no integer ``port``),
@@ -240,14 +240,19 @@ class APsResource:
         ``{"apMacList": [mac], "lanPortList": ports, **settings}``. ``settings``
         is the ``BatchUpdateMultiApPortsOpenApiVO`` body minus the two list keys,
         passed through **verbatim**, dict-first: this method does not validate,
-        translate, or default any field. This batch endpoint is the
-        model-portable write (the single-port PATCH /aps/{mac}/ports/{port}
-        errors on multi-port models).
+        translate, or default any field. This batch endpoint is the portable
+        write: the single-port PATCH /aps/{mac}/ports/{port} errors on multi-port
+        models (e.g. EAP650GP) and rejects VLAN bodies on some firmware of
+        single-port models (e.g. EAP725-Wall 1.1.2).
 
         ``ports`` are string port ids from ``get_ports`` (e.g. ``["ETH0"]``).
 
-        VLAN body (controller-verified, By-Network path — ``custom=false``):
+        VLAN body (controller-verified, By-Network path):
 
+        - Send ``custom=false`` explicitly whenever the body carries
+          ``taggedNetworkId``/``untaggedNetworkId``. Without it the controller
+          ignores both lists — setting and clearing alike — while still
+          returning ``errorCode 0`` and applying the rest of the body.
         - Native VLAN is set via ``localVlanNetworkId`` (a LAN-network id;
           resolve VLAN id -> network id with
           ``client.lan_networks.vlan_id_to_network_id``). Tagged/untagged

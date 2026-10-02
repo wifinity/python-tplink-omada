@@ -27,6 +27,33 @@
       "firmware": "1.0.26",
       "result": "pass",
       "date": "2026-08-12"
+    },
+    {
+      "sdk_version": "1.5.1",
+      "controllerVer": "6.2.14.11",
+      "apiVer": "3",
+      "device_model": "SG2210XMP-M2 v1.0",
+      "firmware": "1.0.26",
+      "result": "pass",
+      "date": "2026-08-13"
+    },
+    {
+      "sdk_version": "1.6.0",
+      "controllerVer": "6.3.0.45",
+      "apiVer": "3",
+      "device_model": "SG2210XMP-M2 v1.0",
+      "firmware": "1.0.26",
+      "result": "pass",
+      "date": "2026-10-01"
+    },
+    {
+      "sdk_version": "2.0.0",
+      "controllerVer": "6.3.0.45",
+      "apiVer": "3",
+      "device_model": "SG2210XMP-M2 v1.0",
+      "firmware": "1.0.26",
+      "result": "pass",
+      "date": "2026-10-02"
     }
   ]
 }
