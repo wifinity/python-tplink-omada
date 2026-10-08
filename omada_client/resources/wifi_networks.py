@@ -64,6 +64,9 @@ _DEFAULT_PMF_MODE_BY_TYPE: dict[str, int] = {
 }
 
 
+_BAND_STEER_MODES = frozenset({0, 1, 2, 3})
+
+
 class WiFiNetworksResource:
     def __init__(self, client: Any) -> None:
         self.client = client
@@ -759,12 +762,34 @@ class WiFiNetworksResource:
         response = self.client.patch(self._ssid_path(site_id, ssid_id, "/rate-limit"), json=payload)
         return cast(dict[str, Any], response)
 
+    @staticmethod
+    def _validate_band_steer_mode(mode: int) -> int:
+        if isinstance(mode, bool) or not isinstance(mode, int) or mode not in _BAND_STEER_MODES:
+            raise ValueError(f"band steer mode must be one of {sorted(_BAND_STEER_MODES)}; got {mode!r}")
+        return mode
+
+    def update_band_steer(
+        self,
+        *,
+        site_id: str,
+        id: str | None = None,
+        name: str | None = None,
+        mode: int,
+    ) -> dict[str, Any]:
+        """PATCH the SSID's band steering mode (0 disable, 1 prefer 5/6GHz, 2 balance, 3 use site setting)."""
+        self._require_one_selector(id, name)
+        payload = {"mode": self._validate_band_steer_mode(mode)}
+        ssid_id = self._resolve_ssid_id(site_id=site_id, id=id, name=name)
+        response = self.client.patch(self._ssid_path(site_id, ssid_id, "/band-steer"), json=payload)
+        return cast(dict[str, Any], response)
+
     def _validate_post_create_inputs(
         self,
         *,
         multicast_config: dict[str, Any] | None,
         rate_control: dict[str, Any] | None,
         rate_limit_profile_name: str | None,
+        band_steer_mode: int | None = None,
     ) -> None:
         """Validate post-create PATCH inputs before the POST.
 
@@ -779,6 +804,8 @@ class WiFiNetworksResource:
             not isinstance(rate_limit_profile_name, str) or not rate_limit_profile_name
         ):
             raise ValueError("rate_limit_profile_name must be a non-empty string")
+        if band_steer_mode is not None:
+            self._validate_band_steer_mode(band_steer_mode)
 
     def _apply_post_create_patches(
         self,
@@ -790,9 +817,15 @@ class WiFiNetworksResource:
         multicast_config: dict[str, Any] | None,
         rate_control: dict[str, Any] | None,
         rate_limit_profile_name: str | None,
+        band_steer_mode: int | None = None,
     ) -> None:
         """Run the opt-in post-create PATCHes; wrap any failure with the created SSID id."""
-        if multicast_config is None and rate_control is None and rate_limit_profile_name is None:
+        if (
+            multicast_config is None
+            and rate_control is None
+            and rate_limit_profile_name is None
+            and band_steer_mode is None
+        ):
             return
         ssid_id = self._resolve_ssid_id_after_create(
             site_id=site_id,
@@ -818,6 +851,10 @@ class WiFiNetworksResource:
             if rate_limit_profile_name is not None:
                 step = "rate-limit"
                 self.update_rate_limit(site_id=site_id, id=ssid_id, rate_limit_profile_name=rate_limit_profile_name)
+                completed_steps.append(step)
+            if band_steer_mode is not None:
+                step = "band-steer"
+                self.update_band_steer(site_id=site_id, id=ssid_id, mode=band_steer_mode)
                 completed_steps.append(step)
         except Exception as exc:
             raise WiFiNetworkPartiallyConfiguredError(
@@ -846,6 +883,7 @@ class WiFiNetworksResource:
         multicast_config: dict[str, Any] | None = None,
         rate_control: dict[str, Any] | None = None,
         rate_limit_profile_name: str | None = None,
+        band_steer_mode: int | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Create a site SSID bound to ``ap_groups`` (AP group ids or names).
@@ -860,6 +898,7 @@ class WiFiNetworksResource:
             multicast_config=multicast_config,
             rate_control=rate_control,
             rate_limit_profile_name=rate_limit_profile_name,
+            band_steer_mode=band_steer_mode,
         )
         if network_data is not None and "apGroupIds" in network_data:
             raise ValueError("network_data must not include 'apGroupIds'; pass ap_groups")
@@ -921,5 +960,6 @@ class WiFiNetworksResource:
             multicast_config=multicast_config,
             rate_control=rate_control,
             rate_limit_profile_name=rate_limit_profile_name,
+            band_steer_mode=band_steer_mode,
         )
         return cast(dict[str, Any], response)

@@ -1024,6 +1024,48 @@ def test_wifi_create_applies_rate_limit_profile_by_name() -> None:
     assert client.patch_calls[-1][1] == _expected_rate_limit_patch_body("p-default")
 
 
+def test_wifi_update_band_steer_by_id() -> None:
+    client = DummyClient()
+    resource = WiFiNetworksResource(client)
+
+    resource.update_band_steer(site_id="s1", id="s9", mode=3)
+
+    assert client.patch_calls == [("/openapi/v1/sites/s1/wireless-network/ssids/s9/band-steer", {"mode": 3})]
+
+
+@pytest.mark.parametrize("mode", [-1, 4, True, "3", None])
+def test_wifi_update_band_steer_rejects_invalid_mode(mode: object) -> None:
+    resource = WiFiNetworksResource(DummyClient())
+
+    with pytest.raises(ValueError, match="band steer mode"):
+        resource.update_band_steer(site_id="s1", id="s9", mode=mode)  # type: ignore[arg-type]
+
+
+def test_wifi_create_applies_band_steer_mode() -> None:
+    client = DummyClient()
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
+    _wire_post_create(client, ssid_id="s-new")
+    resource = WiFiNetworksResource(client)
+
+    resource.create(site_id="s1", ap_groups=["w1"], type="open", ssid="Steered", band_steer_mode=3)
+
+    assert client.patch_calls[-1] == (
+        "/openapi/v1/sites/s1/wireless-network/ssids/s-new/band-steer",
+        {"mode": 3},
+    )
+
+
+def test_wifi_create_invalid_band_steer_mode_fails_before_post() -> None:
+    client = DummyClient()
+    _wire_ap_group(client, group_id="w1", group_name="Corp")
+    resource = WiFiNetworksResource(client)
+
+    with pytest.raises(ValueError, match="band steer mode"):
+        resource.create(site_id="s1", ap_groups=["w1"], type="open", ssid="Bad", band_steer_mode=9)
+
+    assert client.post_calls == []
+
+
 def test_wifi_create_partial_failure_raises_with_ssid_id() -> None:
     client = DummyClient()
     _wire_ap_group(client, group_id="w1", group_name="Corp")
