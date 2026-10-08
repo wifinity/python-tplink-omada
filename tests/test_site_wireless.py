@@ -6,6 +6,8 @@ read-modify-write merge is the key behaviour — setters must echo the untouched
 blocks back so the controller's required-field validation passes.
 """
 
+import pytest
+
 from omada_client.resources import SiteWirelessResource
 
 
@@ -24,6 +26,10 @@ class DummyHttpClient:
 
     def patch(self, url: str, **kwargs) -> dict:
         self.requests.append(("PATCH", url, kwargs))
+        return self._patch_response
+
+    def put(self, url: str, **kwargs) -> dict:
+        self.requests.append(("PUT", url, kwargs))
         return self._patch_response
 
 
@@ -159,3 +165,142 @@ def test_set_airtime_fairness_per_band_values() -> None:
         "enable5g": False,
         "enable6g": True,
     }
+
+
+def _rrm_response() -> dict:
+    return {"errorCode": 0, "result": {"mode": 0, "resource": 0, "timeRangeEnable": False}}
+
+
+def _rf_planning_response() -> dict:
+    return {
+        "errorCode": 0,
+        "result": {
+            "mode": 1,
+            "channelDeployEnable": True,
+            "bandDeployEnable": True,
+            "channelWidthDeployEnable": True,
+            "powerAdjustEnable": True,
+            "excludeAps": [],
+            "occurrence": {"hour": 0, "minute": 0, "timingType": 1},
+            "scheduleEnable": False,
+            "resource": 0,
+            "advancedSetting": {
+                "exclude5gChEn": False,
+                "exclude5gCh": [],
+                "powerMode": 0,
+                "powerThreshold": {"mode": 0},
+                "widthSelectEn": False,
+            },
+        },
+    }
+
+
+def test_get_adaptive_optimization_returns_result() -> None:
+    http = DummyHttpClient()
+    http._get_response = _rrm_response()
+
+    result = SiteWirelessResource(http).get_adaptive_optimization(site_id="site-1")
+
+    assert result == {"mode": 0, "resource": 0, "timeRangeEnable": False}
+    assert http.requests[0][1].endswith("/sites/site-1/rrm/config")
+
+
+@pytest.mark.parametrize(("enabled", "mode"), [(True, 1), (False, 0)])
+def test_set_adaptive_optimization_merges_mode_and_puts(enabled: bool, mode: int) -> None:
+    http = DummyHttpClient()
+    http._get_response = {"errorCode": 0, "result": {"mode": 1 - mode, "resource": 0, "timeRangeEnable": False}}
+
+    SiteWirelessResource(http).set_adaptive_optimization(site_id="site-1", enabled=enabled)
+
+    method, url, kwargs = http.requests[1]
+    assert method == "PUT"
+    assert url.endswith("/sites/site-1/rrm/config")
+    assert kwargs["json"] == {"mode": mode, "resource": 0, "timeRangeEnable": False}
+
+
+def test_set_adaptive_optimization_rejects_non_bool() -> None:
+    with pytest.raises(ValueError, match="bool"):
+        SiteWirelessResource(DummyHttpClient()).set_adaptive_optimization(site_id="site-1", enabled=1)  # type: ignore[arg-type]
+
+
+def test_get_optimization_config_reads_rf_planning() -> None:
+    http = DummyHttpClient()
+    http._get_response = _rf_planning_response()
+
+    result = SiteWirelessResource(http).get_optimization_config(site_id="site-1")
+
+    assert result["mode"] == 1
+    assert http.requests[0][1].endswith("/sites/site-1/rfPlanning")
+
+
+def test_custom_setting_from_config_keeps_toggles_and_advanced_only() -> None:
+    config = _rf_planning_response()["result"]
+
+    custom = SiteWirelessResource.custom_setting_from_config(config)
+
+    assert custom == {
+        "channelDeployEnable": True,
+        "bandDeployEnable": True,
+        "channelWidthDeployEnable": True,
+        "powerAdjustEnable": True,
+        "advancedSetting": config["advancedSetting"],
+    }
+
+
+def test_set_optimization_config_custom_puts_mode_and_custom_setting() -> None:
+    http = DummyHttpClient()
+    custom = {
+        "channelDeployEnable": True,
+        "bandDeployEnable": True,
+        "channelWidthDeployEnable": True,
+        "powerAdjustEnable": True,
+        "advancedSetting": {
+            "widthSelectEn": True,
+            "widthRange": {"minWidth5g": 20, "maxWidth5g": 40, "minWidth6g": 20, "maxWidth6g": 80},
+            "powerMode": 0,
+            "powerThreshold": {"mode": 0},
+            "exclude5gChEn": False,
+        },
+    }
+
+    SiteWirelessResource(http).set_optimization_config(site_id="site-1", mode=1, custom_setting=custom)
+
+    method, url, kwargs = http.requests[0]
+    assert method == "PUT"
+    assert url.endswith("/sites/site-1/rfPlanning/config")
+    assert kwargs["json"] == {"mode": 1, "customSetting": custom}
+
+
+def test_set_optimization_config_default_sends_mode_only() -> None:
+    http = DummyHttpClient()
+
+    SiteWirelessResource(http).set_optimization_config(site_id="site-1", mode=0)
+
+    assert http.requests[0][2]["json"] == {"mode": 0}
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"mode": 2}, "mode must be one of"),
+        ({"mode": True}, "mode must be one of"),
+        ({"mode": 1}, "non-empty dict"),
+        ({"mode": 1, "custom_setting": {}}, "non-empty dict"),
+        ({"mode": 0, "custom_setting": {"powerAdjustEnable": True}}, "only valid with mode=1"),
+        (
+            {"mode": 1, "custom_setting": {"advancedSetting": {"widthRange": {"minWidth5g": 20, "maxWidth5g": 320}}}},
+            "5g channel width range",
+        ),
+        (
+            {"mode": 1, "custom_setting": {"advancedSetting": {"widthRange": {"minWidth6g": 80, "maxWidth6g": 20}}}},
+            "minimum 80 exceeds maximum 20",
+        ),
+    ],
+)
+def test_set_optimization_config_rejects_invalid_input_before_request(kwargs: dict, match: str) -> None:
+    http = DummyHttpClient()
+
+    with pytest.raises(ValueError, match=match):
+        SiteWirelessResource(http).set_optimization_config(site_id="site-1", **kwargs)
+
+    assert http.requests == []

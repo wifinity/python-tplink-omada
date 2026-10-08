@@ -154,8 +154,8 @@ client.site_services.update_snmp(
 
 ### Site Wireless
 
-`client.site_wireless` manages site-level wireless feature settings: mesh and the
-Management Frame Control panel (per-band airtime fairness).
+`client.site_wireless` manages site-level wireless feature settings: mesh, the
+Management Frame Control panel (per-band airtime fairness), and WLAN optimization.
 
 ```python
 # Mesh master enable
@@ -173,12 +173,26 @@ client.site_wireless.set_airtime_fairness(
 
 # Full Management Frame Control payload (beaconControl + airtimeFairness)
 beacon = client.site_wireless.get_beacon_control(site_id="your-site-id")
+
+# Adaptive WLAN Optimization on/off (time-range fields are preserved)
+client.site_wireless.set_adaptive_optimization(site_id="your-site-id", enabled=True)
+
+# Optimization Config: mode 0 = default, mode 1 = custom (needs custom_setting)
+config = client.site_wireless.get_optimization_config(site_id="your-site-id")
+custom = client.site_wireless.custom_setting_from_config(config)
+custom["advancedSetting"].update(
+    widthSelectEn=True,
+    widthRange={"minWidth5g": 20, "maxWidth5g": 40, "minWidth6g": 20, "maxWidth6g": 80},
+)
+client.site_wireless.set_optimization_config(site_id="your-site-id", mode=1, custom_setting=custom)
 ```
 
 Setters read the current object, change only the targeted fields, and send the
 merged object back, so unrelated settings (band steering, beacon/DTIM/RTS) are
 preserved and the controller's required-field validation is satisfied. Airtime
 fairness shares the `beacon-control` endpoint with the beacon/DTIM/RTS fields.
+The optimization config is read with `GET .../rfPlanning` and written with
+`PUT .../rfPlanning/config` (the latter has no GET).
 
 ### Devices
 
