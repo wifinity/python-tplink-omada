@@ -8,8 +8,7 @@ Omada models DHCP snooping in two layers:
   uplink/cascade port is auto-excluded (implicitly *trusted*) and surfaces in
   ``unSelectedablePorts`` on ``get_supported``.
 
-Spec-vs-reality (verified live against ``SG2210XMP-M2 v1.0``; see the netstack hub
-capability doc ``netstack/planning/dhcp-snooping-omada-api.md``):
+Spec-vs-reality (verified live against ``SG2210XMP-M2 v1.0``):
 
 - Create (``POST /dhcpSnoops``) requires the entries wrapped in a top-level
   ``devices`` array — ``{"devices": [{"mac", "ports": [{"port": N}]}]}``. Sent as

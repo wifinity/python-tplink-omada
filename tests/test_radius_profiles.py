@@ -5,7 +5,7 @@ import pytest
 from omada_client.exceptions import RadiusProfileNotFoundError
 from omada_client.resources.radius_profiles import RadiusProfilesResource
 
-_AUTH_SERVER = {"radiusServerIp": "10.140.0.10", "radiusPort": 1812, "radiusPwd": "s3cr3t"}
+_AUTH_SERVER = {"radiusServerIp": "10.0.0.10", "radiusPort": 1812, "radiusPwd": "s3cr3t"}
 
 
 class DummyClient:
@@ -212,7 +212,7 @@ def test_update_patches_expected_path_and_payload() -> None:
     resource.update(
         site_id="s1",
         profile_id="r1",
-        name="Home Networking Wi-Fi",
+        name="Example RADIUS Profile",
         auth_servers=[_AUTH_SERVER],
         wireless_vlan_assignment=True,
         requireMessageAuthenticator=True,
@@ -221,7 +221,7 @@ def test_update_patches_expected_path_and_payload() -> None:
     assert len(client.patch_calls) == 1
     path, payload = client.patch_calls[0]
     assert path == "/openapi/v1/sites/s1/profiles/radius/r1"
-    assert payload["name"] == "Home Networking Wi-Fi"
+    assert payload["name"] == "Example RADIUS Profile"
     assert payload["authServer"] == [_AUTH_SERVER]
     assert payload["wirelessVlanAssignment"] is True
     assert payload["requireMessageAuthenticator"] is True

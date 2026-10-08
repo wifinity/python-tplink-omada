@@ -35,7 +35,7 @@ AP_PORT_VLANS = [
     {
         "localVlanId": 98,
         "localVlanNetworkId": "net-98",
-        "name": "TPLAB - Open",
+        "name": "Example - Open",
         "nativePorts": ["ETH0"],
         "tagPorts": [],
         "untagPorts": [],
@@ -43,7 +43,7 @@ AP_PORT_VLANS = [
     {
         "localVlanId": 99,
         "localVlanNetworkId": "net-99",
-        "name": "TPLAB - Onboarding",
+        "name": "Example - Onboarding",
         "nativePorts": [],
         "tagPorts": ["ETH0"],
         "untagPorts": [],

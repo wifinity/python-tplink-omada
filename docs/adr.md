@@ -1083,7 +1083,7 @@ program: public SDK carries the sanitized subset; private repo carries the rest)
 
 `switch_dot1x.get` returns `Dot1xSwitchResOpenApiVO`, which the controller does
 **not** populate with the per-port `switches` array. A caller reconciling per-port
-802.1X/MAB (e.g. enabling MAB on home-networking ports) therefore has no way to
+802.1X/MAB (e.g. enabling MAB on selected ports) therefore has no way to
 read current per-port state from `get`, and cannot make the `update` idempotent.
 The controller exposes the state at `GET .../dot1x/candidates`
 (`getSwitchDot1xCandidates` → `Dot1xSwitchInfoOpenApiVO[]`), which was unwrapped.

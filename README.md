@@ -121,11 +121,11 @@ updated_site = client.sites.update(
 # List all sites, or resolve one by id or name
 all_sites = client.sites.all()
 site_by_id = client.sites.get(id="your-site-id")
-site_by_name = client.sites.get(name="johantest")
+site_by_name = client.sites.get(name="example-site")
 
 # Paging (defaults are page=1, pageSize=1000) and server-side search
 sites_page_2 = client.sites.all(params={"page": 2, "pageSize": 50})
-filtered_sites = client.sites.all(params={"searchKey": "johan", "page": 1, "pageSize": 100})
+filtered_sites = client.sites.all(params={"searchKey": "example", "page": 1, "pageSize": 100})
 ```
 
 `client.sites.get(name=...)` resolves the matching `siteId` and then fetches the
