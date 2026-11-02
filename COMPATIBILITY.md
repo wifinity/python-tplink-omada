@@ -17,8 +17,9 @@ by the controller `/api/info` endpoint, plus the tested device model and firmwar
 | 1.6.0 | 6.3.0.45 | 3 | SG2210XMP-M2 v1.0 | 1.0.26 | ✅ pass | 2026-10-01 |
 | 2.0.0 | 6.3.0.45 | 3 | SG2210XMP-M2 v1.0 | 1.0.26 | ✅ pass | 2026-10-02 |
 | 2.1.0 | 6.3.0.45 | 3 | SG2210XMP-M2 v1.0 | 1.0.26 | ✅ pass | 2026-10-08 |
+| 2.2.0 | 6.3.0.45 | 3 | SG2210XMP-M2 v1.0 | 1.0.26 | ✅ pass | 2026-11-02 |
 
-The current SDK release is **v2.1.0**, which requires **controller 6.3 or later**: it
+The current SDK release is **v2.2.0**, which requires **controller 6.3 or later**: it
 uses the AP-group and site-SSID endpoints introduced in 6.3. For a **6.2** controller,
 use **v1.6.0**, the latest 1.x release. The newest 1.x row verified on 6.2 hardware is
 v1.5.0 on `6.2.14.11`.

@@ -4,7 +4,7 @@ A Python client library for the TP-Link Omada SDN controller API.
 
 ## Controller version support
 
-The current release is **v2.1.0**, which requires **Omada controller 6.3 or later**.
+The current release is **v2.2.0**, which requires **Omada controller 6.3 or later**.
 It uses the AP-group and site-SSID endpoints introduced in 6.3, which replace the
 deprecated WLAN-group endpoints.
 
@@ -28,7 +28,7 @@ verified versions in [COMPATIBILITY.md](COMPATIBILITY.md).
 ## Installation
 
 ```bash
-uv add "python-tplink-omada @ git+https://github.com/wifinity/python-tplink-omada.git@v2.1.0"
+uv add "python-tplink-omada @ git+https://github.com/wifinity/python-tplink-omada.git@v2.2.0"
 ```
 
 For development in this repository:
