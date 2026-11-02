@@ -1468,3 +1468,48 @@ Decisions 13 and 14 and amends the SSID decisions (18+), whose payload rules sti
 - An SSID that used to exist once per WLAN group can now appear as several same-name
   site SSIDs; callers deduplicate with `filter(name=...)`.
 - Breaking change -> major version bump (1.6.0 -> 2.0.0).
+
+
+## Decision 44 (2026-11): `FirmwaresResource` for uploaded firmware files and their Application Sites
+
+### Context
+
+A site can only upgrade to an uploaded firmware file ("Firmware → Upload Firmware for
+Update") if it is one of the file's Application Sites. Onboarding automation needs to
+add each new site to those lists. The OpenAPI exposes this at controller level:
+
+- `GET /openapi/v1/{omadacId}/upgrade/firmwares` — paged grid of `FirmwareInfo`
+  (`id`, `name`, `description`, `modelTypeInfo`, `uploadTime`); one model per file.
+- `GET /openapi/v1/{omadacId}/upgrade/firmwares/{firmwareId}/target-sites` —
+  `result.targetSites: [{id, name}]`.
+- `POST /openapi/v1/{omadacId}/upgrade/firmwares/{firmwareId}` —
+  `{targetEnable, targetSites: [siteId...], description}`.
+
+Live-verified on 6.3: the POST **replaces** the site list, and a site with no devices
+is accepted. The API client needs the "Site Manual Firmware Upgrade Modify" permission.
+
+### Decision
+
+Add `FirmwaresResource` as `client.firmwares` with:
+
+- `all()` — every file, paged via `fetch_all_pages`
+- `get(*, id)` — one file from the list; `FirmwareNotFoundError` if absent
+- `get_target_sites(*, id)` — `[{id, name}]`, `[]` when the key is missing
+- `set_target_sites(*, id, site_ids, description=None)` — replaces the list;
+  `targetEnable` is `bool(site_ids)`. The POST also writes `description`, so when it
+  is omitted the current description is read and resent.
+- `add_target_site(*, id, site_id)` — read-modify-write; returns `False` when the
+  site is already present (no write).
+
+### Alternatives considered
+
+1. Only expose `set_target_sites` — rejected: every caller would reimplement the
+   append, and the single-site case is the common one.
+2. Wrap the auto-check or one-time upgrade plans — out of scope: Application Sites
+   only gate which sites may take a file; nothing is upgraded by this call.
+
+### Consequences
+
+- `add_target_site` is not safe under concurrent writers to the same file: a write
+  between its read and its POST is lost. Callers that need certainty re-read the list.
+- New non-breaking resource addition -> version bump (2.1.0 -> 2.2.0).

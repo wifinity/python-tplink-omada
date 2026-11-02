@@ -49,6 +49,10 @@ class LanNetworkNotFoundError(OmadaNotFoundError):
     pass
 
 
+class FirmwareNotFoundError(OmadaNotFoundError):
+    pass
+
+
 class OmadaValidationError(OmadaAPIError):
     def __init__(
         self,

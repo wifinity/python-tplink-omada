@@ -4,7 +4,8 @@
 
 Python client for the TP-Link Omada OpenAPI. Dict-first resource wrappers cover
 sites, devices, APs, switches, AP groups, site Wi-Fi SSIDs, LAN networks,
-RADIUS profiles, OLTs, site services, and site wireless features. Generated models stay internal.
+RADIUS profiles, OLTs, site services, site wireless features, and uploaded
+firmware files' Application Sites. Generated models stay internal.
 Does **not** own higher-level orchestration workflows or external system
 integrations — it is a thin controller-facing client only.
 
@@ -16,8 +17,8 @@ integrations — it is a thin controller-facing client only.
 | `omada_client/auth.py` | OAuth2 client credentials (`/openapi/authorize/token`) |
 | `omada_client/config.py` | Client configuration |
 | `omada_client/mac.py` | MAC validation/normalization (`AA-BB-CC-DD-EE-FF`) |
-| `omada_client/exceptions.py` | `APGroupNotFoundError`, `WiFiNetworkNotFoundError`, `DeviceNotFoundError`, `LanNetworkNotFoundError`, etc. |
-| `omada_client/resources/` | Sites, devices, APs, switches, AP groups, Wi-Fi networks (site SSIDs bound to AP groups), LAN networks, RADIUS profiles, OLTs, site services, site wireless (mesh, airtime fairness) |
+| `omada_client/exceptions.py` | `APGroupNotFoundError`, `WiFiNetworkNotFoundError`, `DeviceNotFoundError`, `LanNetworkNotFoundError`, `FirmwareNotFoundError`, etc. |
+| `omada_client/resources/` | Sites, devices, APs, switches, AP groups, Wi-Fi networks (site SSIDs bound to AP groups), LAN networks, RADIUS profiles, OLTs, site services, site wireless (mesh, airtime fairness), firmwares (uploaded firmware Application Sites) |
 | `omada_client/generated/models/` | Internal OpenAPI-generated models (not public API) |
 | `omada_client/wifi_payload_utils.py` | SSID create/update payload helpers |
 

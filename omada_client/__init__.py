@@ -4,6 +4,7 @@ from .client import OmadaClient
 from .exceptions import (
     APGroupNotFoundError,
     DeviceNotFoundError,
+    FirmwareNotFoundError,
     OmadaAPIError,
     OmadaAuthenticationError,
     OmadaConnectionError,
@@ -24,6 +25,7 @@ __all__ = [
     "OmadaClient",
     "APGroupNotFoundError",
     "DeviceNotFoundError",
+    "FirmwareNotFoundError",
     "OmadaAPIError",
     "OmadaAuthenticationError",
     "OmadaPermissionError",

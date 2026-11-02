@@ -59,6 +59,11 @@
   - `filter(*, site_id, **criteria)` lists every page via `all`, then matches by equality client-side. Criterion keys are strict (site SSID list item fields, plus `ssidEnable`), and the `ssid` criterion matches JSON `name`.
   - `update_basic_config(*, site_id, id|name, network_data=None, vlan=None, **kwargs)` GETs the detail, merges it into `UpdateSsidBasicConfigOpenApiVO` and PATCHes `.../ssids/{id}/basic-config`. `ssid` in overrides maps to `name`. A `vlanSetting` with mode 0 is sent as `{"mode": 0}`, because the controller rejects an echoed empty `customConfig` with -1001.
   - Package helper `ssid_detail_to_basic_config_patch` projects GET detail + overrides for that PATCH body.
+- Firmware contract (`FirmwaresResource`, controller-level `/upgrade/firmwares`, ADR Decision 44):
+  - `all()` pages uploaded files (one model per file); `get(*, id)` raises `FirmwareNotFoundError`.
+  - `get_target_sites(*, id)` returns `[{id, name}]`; `set_target_sites(*, id, site_ids, description=None)` **replaces** the list and resends the current description when omitted.
+  - `add_target_site(*, id, site_id)` is read-modify-write, returns `False` if already present, and is not safe under concurrent writers.
+- DEBUG request logging masks credential-like body keys at any depth (`mask_sensitive_body` in `logging_config.py`), including `deviceAccountSetting.password`.
 - DeviceInfo lookup responses are enriched with decoded status labels when numeric fields exist:
   - `statusMeaning` derived from `status`
   - `detailStatusMeaning` derived from `detailStatus`
